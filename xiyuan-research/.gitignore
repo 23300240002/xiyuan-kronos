@@ -5,5 +5,14 @@ __pycache__/
 *.tmp
 arXiv-2508.02739v1.tar.gz
 六、导师推荐意见.pdf
-迭代/微信图片_*
 *.write_test
+# 本地归档区（draft 分支上有同样的历史副本，工作区只留本地）
+_archive/
+# LaTeX 构建残留（tex/pdf 入库，其余不进）
+research/reports/*.aux
+research/reports/*.log
+research/reports/*.out
+research/reports/*.synctex*
+research/reports/*.bbl
+# 原始数据快照只留本地（入库前按 deep_F §6 规范另行决策）
+data/raw_snapshots/

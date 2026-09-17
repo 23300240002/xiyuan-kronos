@@ -1,16 +1,3 @@
-# ⚠️ 个人研究草案 · 待组内 review
-
-```text
-Status: personal research draft (theory cards + v2 data pipeline + evidence machine)
-Not yet discussed or endorsed by the group
-No training result is claimed
-Do not merge before group review
-```
-
-本目录整体新增，未触碰上游任何文件（`model/`、`finetune/`、`examples/` 等原样）；基线上游 commit `67b630e`。内容已去除个人身份与本机绝对路径（脚本用 `__file__` 相对定位 / `KRONOS_DIR` 环境变量）。评审请从 `research/STATUS_draft.md` 与 `research/crosswalk_theory_code.md` 入手；不采纳则整分支可删，零残留。
-
----
-
 # 曦园项目 · 课题 — 基于 Kronos 的跨源研究（理论线 + 数据代码线）
 
 > **一句话定位**：高频单独建模存在可量化的信息天花板（噪声地板 ρ(Δ)）；因此引入微观结构特征 + 跨源融合（Kronos 低频 context ↔ 高频特征），并把主目标定为**风险/波动率预测**而非收益方向。
@@ -31,7 +18,7 @@ Do not merge before group review
 | `data/binance/` | 测试样本（盘口+K线；v1 特征产物已作废移除）|
 | `文献调研/deep_2026-09-17/` | 六份 deep 报告（一切对外引用的 [一手] 通道）+ `inventory_2026-09-17.md` |
 
-**分支地图**：`main`=核心；个人仓库另设全量备份分支（不在此公开）。本分支即共同仓库评审分支：`research/theory-code-draft`。
+**分支地图**：个人仓库 main=核心、另有全量备份分支（不随本目录公开）；本目录即共同仓库评审分支 `research/theory-code-draft` 的内容，待组 review。
 
 ## 快速验证（conda env `kronos`；`KRONOS_DIR`=KronosLocal 检出根，无默认值）
 

@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kronos增强跨频率时序基础模型研究 - 研究框架图</title>
+<meta name="description" content="面向高频金融市场的Kronos增强跨频率时序基础模型研究整体框架流程图">
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700;900&display=swap');
+
+  .download-btn {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 9999;
+    background: #156C8A;
+    color: #fff;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgba(21,108,138,0.35);
+    transition: all 0.2s;
+    font-family: 'Noto Sans SC', sans-serif;
+  }
+  .download-btn:hover {
+    background: #0e5068;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px rgba(21,108,138,0.45);
+  }
+  .download-btn:active {
+    transform: translateY(0);
+  }
+  .download-btn.loading {
+    opacity: 0.7;
+    cursor: wait;
+  }
+
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  body {
+    font-family: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: #f5f7fa;
+    padding: 0;
+    min-width: 1100px;
+  }
+
+  .chart-container {
+    max-width: 1100px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  /* ===== Each Row ===== */
+  .row {
+    display: flex;
+    align-items: stretch;
+    position: relative;
+  }
+
+  .row + .row {
+    margin-top: 0;
+  }
+
+  /* ===== Left Label ===== */
+  .left-label {
+    width: 72px;
+    min-width: 72px;
+    background: #156C8A;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    writing-mode: horizontal-tb;
+    text-align: center;
+    line-height: 1.5;
+    border-radius: 6px 0 0 6px;
+    padding: 12px 8px;
+    z-index: 2;
+    position: relative;
+  }
+
+  /* ===== Right Content Area ===== */
+  .right-content {
+    flex: 1;
+    border: 1.8px dashed #b0b8c0;
+    border-left: none;
+    border-radius: 0 6px 6px 0;
+    padding: 18px 22px;
+    background: #fff;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .right-content.title-content {
+    justify-content: center;
+    padding: 22px 30px;
+  }
+
+  /* ===== Title Block ===== */
+  .title-block {
+    font-size: 21px;
+    font-weight: 800;
+    color: #156C8A;
+    text-align: center;
+    letter-spacing: 1px;
+    width: 100%;
+  }
+
+  /* ===== Card Blocks ===== */
+  .card {
+    flex: 1 1 200px;
+    min-width: 180px;
+    max-width: 280px;
+    padding: 14px 16px;
+    border-radius: 6px;
+    font-size: 14px;
+    line-height: 1.6;
+    text-align: center;
+    color: #222;
+    font-weight: 500;
+  }
+
+  .card-green {
+    background: #EAF5E3;
+  }
+
+  .card-gray {
+    background: #E7ECEC;
+  }
+
+  .card-pink {
+    background: #F3E3E3;
+  }
+
+  .card-blue {
+    background: #DCE7F7;
+    border: 1px solid #b8c9e0;
+  }
+
+  .card-peach {
+    background: #FBE7D6;
+    border: 1px solid #e0c8a8;
+  }
+
+  /* ===== Arrow between rows ===== */
+  .arrow-down {
+    display: flex;
+    justify-content: center;
+    padding: 0;
+    height: 28px;
+    position: relative;
+  }
+
+  .arrow-down::after {
+    content: '';
+    display: block;
+    width: 0;
+    height: 0;
+    border-left: 10px solid transparent;
+    border-right: 10px solid transparent;
+    border-top: 12px solid #156C8A;
+    margin-top: 0;
+  }
+
+  .arrow-down .arrow-line {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    width: 2.5px;
+    height: 16px;
+    background: #156C8A;
+    transform: translateX(-50%);
+  }
+
+  /* ===== Core Process Section ===== */
+  .core-section {
+    flex: 1;
+    border: 1.8px dashed #b0b8c0;
+    border-left: none;
+    border-radius: 0 6px 6px 0;
+    padding: 20px 22px;
+    background: #fff;
+  }
+
+  .core-layer {
+    margin-bottom: 4px;
+  }
+
+  .core-layer:last-child {
+    margin-bottom: 0;
+  }
+
+  .layer-title {
+    background: #F58220;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 700;
+    padding: 10px 18px;
+    border-radius: 6px;
+    text-align: center;
+    margin-bottom: 10px;
+    letter-spacing: 0.5px;
+  }
+
+  .layer-cards {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-bottom: 4px;
+  }
+
+  .layer-cards .card {
+    flex: 1 1 160px;
+    min-width: 140px;
+    max-width: 240px;
+    font-size: 13px;
+    padding: 10px 12px;
+  }
+
+  .layer-cards .card-wide {
+    flex: 1 1 200px;
+    max-width: 300px;
+  }
+
+  /* ===== Small inner arrow ===== */
+  .inner-arrow {
+    display: flex;
+    justify-content: center;
+    height: 22px;
+    position: relative;
+  }
+
+  .inner-arrow::after {
+    content: '';
+    display: block;
+    width: 0;
+    height: 0;
+    border-left: 8px solid transparent;
+    border-right: 8px solid transparent;
+    border-top: 10px solid #F58220;
+    margin-top: 0;
+  }
+
+  .inner-arrow .arrow-line {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    width: 2px;
+    height: 12px;
+    background: #F58220;
+    transform: translateX(-50%);
+  }
+
+  /* ===== Result Block ===== */
+  .result-block {
+    background: #D2E4EC;
+    font-size: 16px;
+    font-weight: 700;
+    color: #222;
+    text-align: center;
+    padding: 16px 24px;
+    border-radius: 6px;
+    width: 100%;
+    line-height: 1.7;
+  }
+
+  /* ===== Caption ===== */
+  .caption {
+    text-align: center;
+    font-size: 16px;
+    font-weight: 600;
+    color: #333;
+    margin-top: 24px;
+    letter-spacing: 1px;
+  }
+
+  /* ===== Research Content Cards (larger, with bullet points) ===== */
+  .research-card {
+    flex: 1 1 260px;
+    min-width: 240px;
+    max-width: 340px;
+    padding: 16px 18px;
+    border-radius: 6px;
+    font-size: 14px;
+    line-height: 1.7;
+    color: #222;
+  }
+
+  .research-card .rc-title {
+    font-weight: 700;
+    font-size: 15px;
+    margin-bottom: 8px;
+    text-align: center;
+  }
+
+  .research-card ul {
+    padding-left: 18px;
+    margin: 0;
+  }
+
+  .research-card ul li {
+    font-size: 13px;
+    margin-bottom: 2px;
+  }
+
+  /* ===== Subgraph label (for core section) ===== */
+  .core-header {
+    text-align: center;
+    font-size: 16px;
+    font-weight: 700;
+    color: #333;
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 1.5px solid #e0e4e8;
+    letter-spacing: 1px;
+  }
+
+  /* Print-friendly */
+  @media print {
+    body {
+      background: #fff;
+      padding: 10px;
+    }
+  }
+</style>
+</head>
+<body>
+
+<div id="capture-area" style="padding: 40px 20px;">
+<div class="chart-container">
+
+  <!-- ===== Row 1: 总体目标 ===== -->
+  <div class="row">
+    <div class="left-label">总体<br>目标</div>
+    <div class="right-content title-content">
+      <div class="title-block">面向高频金融市场的 Kronos 增强跨频率时序基础模型研究</div>
+    </div>
+  </div>
+
+  <!-- Arrow -->
+  <div class="arrow-down"><span class="arrow-line"></span></div>
+
+  <!-- ===== Row 2: 关键挑战 ===== -->
+  <div class="row">
+    <div class="left-label">关键<br>挑战</div>
+    <div class="right-content">
+      <div class="card card-green">低频K线输入<br>缺失微观结构信息</div>
+      <div class="card card-gray">订单流与盘口动态<br>难以跨频率融合</div>
+      <div class="card card-pink">闪崩与流动性枯竭<br>极端风险难预警</div>
+      <div class="card card-green">生成范式适用边界<br>缺乏系统验证</div>
+    </div>
+  </div>
+
+  <!-- Arrow -->
+  <div class="arrow-down"><span class="arrow-line"></span></div>
+
+  <!-- ===== Row 3: 科学问题 ===== -->
+  <div class="row">
+    <div class="left-label">科学<br>问题</div>
+    <div class="right-content">
+      <div class="card card-green">如何融合tick级成交、<br>盘口深度与低频K线表征？</div>
+      <div class="card card-gray">自回归、扩散、流匹配<br>在高频建模中的边界？</div>
+      <div class="card card-pink">如何实现流动性冲击等<br>反事实因果推理？</div>
+      <div class="card card-green">增强模型是否满足<br>高频金融Scaling Law？</div>
+    </div>
+  </div>
+
+  <!-- Arrow -->
+  <div class="arrow-down"><span class="arrow-line"></span></div>
+
+  <!-- ===== Row 4: 技术路线 ===== -->
+  <div class="row">
+    <div class="left-label">技术<br>路线</div>
+    <div class="right-content">
+      <div class="card card-green">基础模型底座<br>Kronos预训练权重</div>
+      <div class="card card-gray">高频微观结构编码器<br>Tick / LOB / Order Flow</div>
+      <div class="card card-pink">跨频率融合模块<br>多尺度Patch + 交叉注意力</div>
+      <div class="card card-green">多任务预测头<br>收益 / 信号 / 风险 / 对齐</div>
+    </div>
+  </div>
+
+  <!-- Arrow -->
+  <div class="arrow-down"><span class="arrow-line"></span></div>
+
+  <!-- ===== Row 5: 核心研究流程 ===== -->
+  <div class="row">
+    <div class="left-label" style="letter-spacing:1px;">核心<br>研究<br>流程</div>
+    <div class="core-section">
+
+      <!-- Data Layer -->
+      <div class="core-layer">
+        <div class="layer-title">数据层：多市场高低频金融数据构建</div>
+        <div class="layer-cards">
+          <div class="card card-blue">低频K线<br>1min / 5min OHLCV</div>
+          <div class="card card-blue">高频逐笔成交<br>Tick Trade</div>
+          <div class="card card-blue">盘口深度<br>五档LOB</div>
+          <div class="card card-blue card-wide">微观结构特征<br>订单流不平衡 / 冲击成本 / 流动性</div>
+        </div>
+      </div>
+
+      <div class="inner-arrow"><span class="arrow-line"></span></div>
+
+      <!-- Model Layer -->
+      <div class="core-layer">
+        <div class="layer-title">模型层：Kronos增强跨频率时序基础模型</div>
+        <div class="layer-cards">
+          <div class="card card-green">Kronos低频K线表征<br>冻结底层Patch与前层编码器</div>
+          <div class="card card-gray">高频微观结构编码器<br>多尺度Patch嵌入</div>
+          <div class="card card-pink">跨频率交叉注意力<br>趋势与盘口博弈双向交互</div>
+          <div class="card card-green">统一时序表征<br>跨资产 / 跨频率 / 跨市场</div>
+        </div>
+      </div>
+
+      <div class="inner-arrow"><span class="arrow-line"></span></div>
+
+      <!-- Training Layer -->
+      <div class="core-layer">
+        <div class="layer-title">训练层：三阶段分层微调与多任务联合训练</div>
+        <div class="layer-cards">
+          <div class="card card-peach">阶段一<br>通用金融K线微调<br><span style="font-size:12px;color:#555;">修正趋势与波动聚集偏差</span></div>
+          <div class="card card-peach">阶段二<br>高频微观结构增量微调<br><span style="font-size:12px;color:#555;">学习订单流与盘口博弈</span></div>
+          <div class="card card-peach">阶段三<br>多任务联合精调<br><span style="font-size:12px;color:#555;">收益、信号、风险与对齐联合优化</span></div>
+        </div>
+      </div>
+
+      <div class="inner-arrow"><span class="arrow-line"></span></div>
+
+      <!-- Method Layer -->
+      <div class="core-layer">
+        <div class="layer-title">方法层：三类生成范式系统对比</div>
+        <div class="layer-cards">
+          <div class="card card-green">自回归范式<br>高效预测与逐步生成</div>
+          <div class="card card-gray">扩散范式<br>多路径不确定性建模</div>
+          <div class="card card-pink">流匹配范式<br>连续分布变换与快速采样</div>
+        </div>
+      </div>
+
+      <div class="inner-arrow"><span class="arrow-line"></span></div>
+
+      <!-- Task Layer -->
+      <div class="core-layer">
+        <div class="layer-title">任务层：高频量化与风险建模任务</div>
+        <div class="layer-cards">
+          <div class="card card-green">收益预测<br>Smooth L1</div>
+          <div class="card card-gray">高频择时<br>加权交叉熵</div>
+          <div class="card card-pink">尾部风险预警<br>Pinball分位数损失</div>
+          <div class="card card-green">反事实因果推理<br>冲击情景价格路径</div>
+        </div>
+      </div>
+
+      <div class="inner-arrow"><span class="arrow-line"></span></div>
+
+      <!-- Verification Layer -->
+      <div class="core-layer">
+        <div class="layer-title">验证层：HF-FinTS评测集与实证检验</div>
+        <div class="layer-cards">
+          <div class="card card-green">预测精度<br>IC / RankIC / MSE</div>
+          <div class="card card-gray">策略回测<br>年化收益 / 夏普 / 回撤</div>
+          <div class="card card-pink">极端风险识别<br>Risk AUC / 预警提前量</div>
+          <div class="card card-green">Scaling Law<br>参数规模 / 数据量 / 特征维度</div>
+          <div class="card card-gray">消融实验<br>Kronos / 微观结构 / 融合模型</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Arrow -->
+  <div class="arrow-down"><span class="arrow-line"></span></div>
+
+  <!-- ===== Row 6: 预期成果 ===== -->
+  <div class="row">
+    <div class="left-label">预期<br>成果</div>
+    <div class="right-content">
+      <div class="card card-green">融合市场微观结构的<br>Kronos增强高频时序基础模型</div>
+      <div class="card card-gray">HF-FinTS高频金融时序<br>评测基准与开源代码</div>
+      <div class="card card-pink">收益预测、高频择时<br>与极端风险预警提升</div>
+      <div class="card card-green">生成范式边界结论<br>与高水平论文投稿</div>
+    </div>
+  </div>
+
+  <!-- Arrow -->
+  <div class="arrow-down"><span class="arrow-line"></span></div>
+
+  <!-- ===== Row 7: 论文产出 ===== -->
+  <div class="row">
+    <div class="left-label">论文<br>产出</div>
+    <div class="right-content title-content">
+      <div class="result-block">面向人工智能与量化金融交叉领域的<br>高频跨频率时序基础模型方法、评测基准与实证研究</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Caption -->
+<div class="caption">图：研究整体框架</div>
+
+</div><!-- end #capture-area -->
+
+<button class="download-btn" id="downloadBtn" onclick="downloadPNG()">📥 下载PNG图片</button>
+
+<script>
+function downloadPNG() {
+  const btn = document.getElementById('downloadBtn');
+  btn.textContent = '⏳ 生成中...';
+  btn.classList.add('loading');
+
+  const target = document.getElementById('capture-area');
+
+  html2canvas(target, {
+    scale: 3,
+    useCORS: true,
+    backgroundColor: '#f5f7fa',
+    logging: false,
+    windowWidth: 1100
+  }).then(canvas => {
+    const link = document.createElement('a');
+    link.download = 'Kronos研究框架图.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+
+    btn.textContent = '📥 下载PNG图片';
+    btn.classList.remove('loading');
+  }).catch(err => {
+    alert('导出失败：' + err.message);
+    btn.textContent = '📥 下载PNG图片';
+    btn.classList.remove('loading');
+  });
+}
+</script>
+
+</body>
+</html>

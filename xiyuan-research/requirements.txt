@@ -1,18 +1,8 @@
-# requirements.txt - Python依赖包清单
+# requirements.txt — v2 数据/验证核心（2026-09-17 精简；旧下载器依赖随管线退役）
+pandas>=2.2        # merge_asof/timestamp 语义（TP13 预注册时钉精确版本）
+numpy>=1.26
+pyarrow>=14        # parquet 读写
 
-# 数据获取
-ccxt==4.1.0              # 币安API接口
-
-# 数据处理
-pandas==2.1.3            # 数据框处理
-numpy==1.24.3            # 数值计算
-
-# 数据存储
-pyarrow==14.0.1          # parquet文件格式
-
-# 进度显示
-tqdm==4.66.1             # 进度条
-
-# 可选：数据可视化
-matplotlib==3.8.2        # 绘图（用于生成报告图表）
-seaborn==0.13.0          # 统计可视化
+# 验证机附加（conda env "kronos" 已含）：
+#   sympy, mpmath  -> research/scripts/verify_proposition_C.py
+#   torch          -> kronos_context_adapter / audit_kronos_x10（本地权重，HF_HUB_OFFLINE=1）

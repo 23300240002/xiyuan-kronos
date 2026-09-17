@@ -1,58 +1,23 @@
 # research/ · 理论与有效性研究底座
 
-> 建立时间：2026-09-10
-> 用途：把"曦源项目 · 理论线"的工作对象登记成可核查、可依赖、可失效追溯的形式。
-> **纪律**：任何进入本目录的结论，必须能回答「出处 → 假设 → 可推翻条件」三问。
+> 建立 2026-09-10，2026-09-17 结构重整。**新接手从这里读**：
+> 1. `STATUS_draft.md` —— 完成度声明（理论/代码/训练各到哪、边界、复跑命令）；
+> 2. `task_board.md` —— TP1–TP14 状态与下一步；
+> 3. `state.json` —— 机器可读主记录（阻塞项/增量/失效登记）；
+> 4. `crosswalk_theory_code.md` —— **理论×代码×一手文献对照表**（每条理论的代码契约、每个代码的文献归属、R 冗余清单）；
+> 5. `claims/C-CM-004.md`（模型 D 规范陈述）与 `claims/` 其余卡——按卡内"出处→假设→可推翻条件"读。
 
----
+## 目录内导航
 
-## 🚩 交接入口（新接任者从这里开始）
-
-**若你是接手本目录的新 Agent，请先读 [`handoff/START_HERE.md`](handoff/START_HERE.md)。**
-
-| 文件 | 作用 |
+| 路径 | 作用 |
 |---|---|
-| [`handoff/START_HERE.md`](handoff/START_HERE.md) | **接任入口**（1–2 页）：目标、可靠产出、风险、先读顺序、快速测试、下一步主任务 |
-| [`handoff/MODEL_AND_RESULTS.md`](handoff/MODEL_AND_RESULTS.md) | **数学核心**：四个模型版本（A/B/C/D）+ 每条结果的完整陈述与证明状态 |
-| [`handoff/AUDIT_AND_OPEN_ISSUES.md`](handoff/AUDIT_AND_OPEN_ISSUES.md) | **13 类错误/冲突/待核验项 + 阻塞项**（先读这个可避开所有已知坑） |
-| [`handoff/PROJECT_AND_TASKS.md`](handoff/PROJECT_AND_TASKS.md) | 项目原目标（一手/解释/未核实三分）+ TP1–TP14 任务池 |
-| [`handoff/ARTIFACT_MANIFEST.md`](handoff/ARTIFACT_MANIFEST.md) | 文件清单：状态、运行命令、已知 bug、是否安全运行 |
-| [`handoff/NEXT_AGENT_PROMPT.md`](handoff/NEXT_AGENT_PROMPT.md) | 可直接发送给接任 Agent 的启动指令 |
-| [`handoff/handoff_state.json`](handoff/handoff_state.json) | 机器可读的交接状态 |
+| `claims/` | 结果卡。**规范位**：C-CM-004（模型 D + 定理 A/B/C）、C-T9-002（对齐损失高斯子问题，SEALED）、C-T9-003（L_align 候选空间）、C-CODE-HF-001（数据层 v2）、C-X10-001（Kronos 接口）、C-X03-001（噪声地板标定）；历史/审计卡：C-CM-001/002/003、C-T12-001/002 |
+| `reports/` | 决策与规格：DS-CM-001（五位路由表）、NEXT_TASK_X10、TP13_benchmark_spec_draft_v0.1、两份 tex（组会稿+从零推导稿，**推导稿待按 deep_E §4 砍重推**）|
+| `scripts/` | 验证机（全部确定性离线）：verify_hf_data_pipeline（T1–T9）、verify_proposition_C、verify_theorem_card、verify_t9_*、verify_t12_feature_bound、verify_y3_identity、audit_t9、audit_kronos_x10、kronos_context_adapter（需 `KRONOS_DIR`）、crossmodal_bridge、calibrate_noise_floor |
+| `notation.md` `assumptions.md` `dependency_graph.md` `sources.md` | 符号/假设/依赖/来源四表 |
+| `state.json` `task_board.md` `STATUS_draft.md` `crosswalk_theory_code.md` | 状态四件套 |
 
-> ⚠️ **两条提醒**：① `SEALED` / `PHASE_CLOSED` **只表示"本轮不再扩展数值扫描"，不表示已验证**；
-> ② **不要继续反复修订玩具模型来替代真实 $L_{\text{align}}$ 的定义确认**——那是定义问题，不是数学问题。
+**纪律**：任何进入本目录的结论必须回答「出处 → 假设 → 可推翻条件」三问；`SEALED/PHASE_CLOSED` 只表示本轮不再扩展，不表示已验证；对外引用只走 `../文献调研/deep_2026-09-17/` 的 [一手] 通道（该批调研已证伪 9+ 条记忆式假引用，"三锚点"式术语入库前必须先全目录检索）。
 
----
-
-## 文件导航
-
-| 文件 | 作用 |
-|---|---|
-| `sources.md` | **来源表**：区分一手材料 / 二手总结 / 会话内新造 |
-| `notation.md` | **符号表**：统一定义，标注冲突 |
-| `assumptions.md` | **假设表**：公理层 A\*\*\* 与可检验假设 H\*\*\* 两级 |
-| `dependency_graph.md` | **依赖图** + 任务池 T1–T14 状态 |
-| `task_board.md` | TP1–TP14 当前状态、主任务与完成判据 |
-| `claims/` | 结果卡（C-T{n}-{序号}） |
-| `state.json` | 检查点 |
-
-## 三级可信度标签（全目录通用）
-
-| 标签 | 含义 |
-|---|---|
-| **[一手]** | 申请书 / 研究方案 / 微调方案 / 论文 LaTeX / 官方代码 / 数据产物。可直接作事实依据 |
-| **[二手]** | 由历史 AI 会话生成的 md。**只能作为线索，不能作为事实依据** |
-| **[待核]** | 见过但未核实出处的内容 |
-| **[新造]** | 本次或历史会话中引入的、项目原始材料中不存在的术语或结论。**必须显式标注** |
-
-## 第一轮核查的首要结论
-
-| 术语 | 是否存在原始定义 | 判定 |
-|---|---|---|
-| **三范式** | ✅ 存在 | 一手：研究方案 模块 3、申请书、技术路线图 Q2。= 自回归 AR / 扩散 Diffusion / 流匹配 TimeFlow |
-| **假设 3** | ✅ 存在 | 二手（`理论先行_可检验假设清单.md` §1）：三种生成范式的优劣方向可预先推导。**但该文件本身是 AI 生成的二手材料** |
-| **假设 5** | ✅ 存在 | 同上：内容四的因果声明必须收窄为反事实模拟 |
-| **三锚点** | ⚠️ **未命中** | **[新造]** 会话内引入。在 `*.md`/`*.tex`/`*.py` 的检索范围内未命中；项目材料里只有语义不同的「推导锚点」（= 假设所依赖的 Kronos 原文事实）。**「指定文件类型检索未命中」不等于项目不存在此概念** |
-
-⚠️ **由此推广的规则**：历史会话中产生的所有"术语"和"结论"，在登记进本目录前都必须先做这次同样的检索。`三锚点` 是第一个被抓到的例子，不是唯一可能的例子。
+> 2026-09-10 版 `handoff/` 七件套已被上面的"接手五读"取代，仅存于个人仓库历史分支。
+> 可信度标签 [一手]/[二手]/[待核]/[新造] 全仓库通用，含义见根 README。
