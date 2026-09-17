@@ -1,0 +1,18 @@
+# requirements.txt - Python依赖包清单
+
+# 数据获取
+ccxt==4.1.0              # 币安API接口
+
+# 数据处理
+pandas==2.1.3            # 数据框处理
+numpy==1.24.3            # 数值计算
+
+# 数据存储
+pyarrow==14.0.1          # parquet文件格式
+
+# 进度显示
+tqdm==4.66.1             # 进度条
+
+# 可选：数据可视化
+matplotlib==3.8.2        # 绘图（用于生成报告图表）
+seaborn==0.13.0          # 统计可视化

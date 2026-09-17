@@ -1,0 +1,538 @@
+\documentclass[UTF8,11pt,a4paper]{ctexart}
+\usepackage[a4paper,margin=2.2cm]{geometry}
+\usepackage{amsmath,amssymb,mathtools,booktabs,longtable,array}
+\usepackage{xcolor,enumitem,hyperref}
+\hypersetup{colorlinks=true,linkcolor=blue,urlcolor=blue}
+\setlist{itemsep=2pt,topsep=4pt}
+\emergencystretch=3em
+
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Var}{\mathrm{Var}}
+\newcommand{\Cov}{\mathrm{Cov}}
+\newcommand{\Risk}{\mathcal{R}}
+\newcommand{\ind}{\mathbf{1}}
+
+\title{曦源项目跨模态理论\\从零重建版（Full-Derive Companion）}
+\author{与 \texttt{private\_group\_meeting\_crossmodal.tex} 同源的手算推导稿}
+\date{2026 年 9 月}
+
+\begin{document}
+\maketitle
+
+\begin{center}
+\fbox{\parbox{0.92\textwidth}{\small
+本文是内部讨论稿的同源配套，不是论文定稿。目的：把原稿拆到最底层的数学原子，再逐层搭回去，
+使读者可以独立复算每一个等号。文中所有结论按\textbf{已证明 / 条件性推导 / 设计建议 / 待核验}
+四类标注。未联网核验文献新颖性；未新增玩具模型；未把``扫描到极小点''当作全局证明。
+文末汇总对原稿的 6 处修改建议。}}
+\end{center}
+
+\section*{阅读方式与总纲}
+\addcontentsline{toc}{section}{阅读方式与总纲}
+
+整篇原稿只做三件事：
+\begin{enumerate}
+  \item \textbf{（甲）} 用平方损失和条件期望，把``高频有没有用''变成一个精确等式，可判真；
+  \item \textbf{（乙）} 在一个线性高斯模型里，把这个等式算成四个闭式数，可验算；
+  \item \textbf{（丙）} 讨论如果去``对齐''两路表征会发生什么——有反例、有设计建议，但\textbf{没有}普适定理。
+\end{enumerate}
+其余全是边界声明、路由与纪律。文末给出``层号 $\leftrightarrow$ 原稿章节''索引。
+
+\section{第 0 层：舞台与记号（原初起点）}
+
+固定概率空间 $(\Omega,\mathcal F,\mathbb P)$。
+
+\begin{itemize}
+  \item \textbf{随机变量}：可测函数 $X:\Omega\to\mathbb R$。所有量（价格、收益、波动率、表征分量）都是随机变量。
+  \item \textbf{期望}：$\E[X]=\int_\Omega X\,d\mathbb P$。只有在 $\E[X^2]<\infty$ 时才谈风险。
+  \item \textbf{时间与信息}：设预测时点为 $t$，``到 $t$ 为止的全部信息''记为 $\sigma$-代数 $\mathcal F_t\subseteq\mathcal F$。$t$ 之后的信息不在 $\mathcal F_t$ 里。
+  \item \textbf{两个信息集}：低频信息 $L$（K 线序列）、高频信息 $H$（逐笔/盘口统计），约定二者都是 $\mathcal F_t$-可测的。这一条叫\textbf{无泄漏}。
+  \item \textbf{目标}：$Y$ 是想预测的量（未来收益、未来已实现波动率等）。$Y$ 不必是 $\mathcal F_t$-可测的——这正是``预测''有意义的原因。
+\end{itemize}
+
+记号：$\sigma(L)$ 表示``由 $L$ 生成的信息 $\sigma$-代数''。显然
+\[
+\sigma(L)\subseteq\sigma(L,H).
+\]
+
+\section{第 1 层：条件期望（全部推导的引擎）}
+
+\subsection{三种等价理解}
+
+\textbf{离散版}：若 $X$ 取离散值，
+\[
+\E[Y\mid X=x]=\sum_y y\,\mathbb P(Y=y\mid X=x)=\sum_y y\,\frac{\mathbb P(Y=y,\,X=x)}{\mathbb P(X=x)} .
+\]
+它就是``在 $X=x$ 这一组样本里 $Y$ 的平均值''。
+
+\textbf{连续版}：$\E[Y\mid X=x]=\int y\,f_{Y\mid X}(y\mid x)\,dy$。
+
+\textbf{严格版（测度论）}：$\E[Y\mid X]$ 是唯一（几乎处处意义下）的 $\sigma(X)$-可测函数 $\varphi$，满足对任意 $\sigma(X)$-可测事件 $A$，
+\[
+\int_A\varphi\,d\mathbb P=\int_A Y\,d\mathbb P .
+\]
+更一般地，给定 $\sigma$-代数 $\mathcal G$，$\E[Y\mid\mathcal G]$ 是满足``对任意 $A\in\mathcal G$，$\int_A\varphi=\int_A Y$''的 $\mathcal G$-可测函数。
+
+\textbf{为什么给严格版}：后面所有``等号成立当且仅当 $m_H=m_L$''都是\textbf{几乎处处}（a.s.）意义下的。用离散直觉会漏掉``只在零概率集合上不同''的情形。
+
+\subsection{四条性质（全部引擎）}
+设 $X,Y$ 有二阶矩，$\mathcal F\subseteq\mathcal G$ 为 $\sigma$-代数。
+
+\begin{enumerate}
+  \item \textbf{(P1) 塔式性质}：$\E\big[\E[Y\mid\mathcal G]\mid\mathcal F\big]=\E[Y\mid\mathcal F]$。
+  \item \textbf{(P2) 已知量可提出}：若 $X$ 是 $\mathcal G$-可测的，$\E[XY\mid\mathcal G]=X\,\E[Y\mid\mathcal G]$。
+  \item \textbf{(P3) 全方差公式}：$\Var(Y)=\Var\big(\E[Y\mid\mathcal G]\big)+\E\big[\Var(Y\mid\mathcal G)\big]$。
+  \item \textbf{(P4) 条件版全方差公式（核心）}：
+  \[
+  \Var(Y\mid\mathcal F)=\E\big[\Var(Y\mid\mathcal G)\mid\mathcal F\big]+\Var\big(\E[Y\mid\mathcal G]\mid\mathcal F\big).
+  \]
+\end{enumerate}
+
+\section{第 2 层：平方损失的最优预测器就是条件期望}
+
+\subsection{风险与 Bayes 风险}
+对任意使用信息 $L$ 的可测预测函数 $g$，定义平方风险
+\[
+\mathrm{Risk}(g)=\E\big[(Y-g(L))^2\big],\qquad
+R_L^*=\inf_g\ \E\big[(Y-g(L))^2\big].
+\]
+
+\subsection{L$^2$ 投影定理}
+令 $\mathcal G=\sigma(L)$，$\hat Y=\E[Y\mid\mathcal G]$。对任意 $\mathcal G$-可测的 $g$，
+\[
+\E\big[(Y-g)^2\big]=\underbrace{\E\big[(Y-\hat Y)^2\big]}_{\text{与 }g\text{ 无关}}+\ \E\big[(\hat Y-g)^2\big].
+\]
+\textbf{证明}：展开 $Y-g=(Y-\hat Y)+(\hat Y-g)$ 并取期望，
+\[
+\E[(Y-g)^2]=\E[(Y-\hat Y)^2]+2\,\E[(Y-\hat Y)(\hat Y-g)]+\E[(\hat Y-g)^2].
+\]
+交叉项为零：$\hat Y-g$ 是 $\mathcal G$-可测，由 (P2)
+\[
+\E[(Y-\hat Y)(\hat Y-g)\mid\mathcal G]=(\hat Y-g)\,\E[Y-\hat Y\mid\mathcal G]=0 .
+\]
+再取期望即得交叉项 $0$。$\square$
+
+\textbf{推论}：
+\[
+\boxed{\,g^*(L)=\E[Y\mid L],\qquad R_L^*=\E\big[(Y-\E[Y\mid L])^2\big].\,}
+\]
+同理 $f^*(L,H)=\E[Y\mid L,H]$，且 $R_{L,H}^*=\E\big[(Y-\E[Y\mid L,H])^2\big]$。
+
+\textbf{标注}：``平方损失 $\Leftrightarrow$ 条件均值''是标准结论，不是本项目成果。原稿 §2.1 直接使用正确，但不应标成``推导结果''。
+
+\section{第 3 层：从原始信息到表征（原稿 §1 的链）}
+
+原稿的链：$\text{市场观测}\to(L,H)\to(Z_L,Z_H)\to\widehat Y\to\text{决策}$。
+
+\begin{itemize}
+  \item \textbf{原始层}：$(L,H)$，信息集 $\sigma(L)\subseteq\sigma(L,H)$。
+  \item \textbf{表征层}：$Z_L=E_L(L)$，$Z_H=E_H(H)$（确定性编码器；若随机编码，下文包含关系需改写为条件期望形式）。
+  \item 因 $Z_L=E_L(L)$ 是 $L$ 的函数，故 $\sigma(Z_L)\subseteq\sigma(L)$；同理 $\sigma(Z_H)\subseteq\sigma(H)$。
+\end{itemize}
+
+\subsection{信息越多风险越低——但只是``不增''}
+对任意信息集 $\mathcal G$ 定义 $R^*(\mathcal G)=\E[(Y-\E[Y\mid\mathcal G])^2]$。由 (P4)，取 $\mathcal G\subseteq\mathcal G'$，
+\[
+R^*(\mathcal G)-R^*(\mathcal G')=\E\big[(\E[Y\mid\mathcal G']-\E[Y\mid\mathcal G])^2\big]\ge0 .
+\]
+于是
+\[
+\underbrace{R_{Z_L}^*}_{\text{压缩后}}\ \ge\ \underbrace{R_L^*}_{\text{原始}}\ \ge\ \underbrace{R_{L,H}^*}_{\text{原始双路}}\ \le\ \underbrace{R_{Z_LZ_H}^*}_{\text{压缩后双路}} .
+\]
+\textbf{口诀}：加信息风险不增；压信息风险不减。
+
+\subsection{为什么``$H$ 有增量''推不出``$Z_H$ 有用''}
+因为 $Z_H=E_H(H)$ 是 $H$ 的\textbf{有损压缩}。即使原始层 $\E[Y\mid L,H]\ne\E[Y\mid L]$，
+压缩后完全可能 $\E[Y\mid Z_L,Z_H]=\E[Y\mid Z_L]$。\textbf{原稿的闭式都是原始层数学；换成神经网络编码器后只能作上界参照。}
+
+\section{第 4 层：核心恒等式 C-CM-001（逐步推导）}
+
+\subsection{陈述}
+\[
+\boxed{\,R_L^*-R_{L,H}^*=\E\Big[\big(\E[Y\mid L,H]-\E[Y\mid L]\big)^2\Big]\ \ge0.}
+\]
+
+\subsection{记号}
+\[
+\boxed{\,m_H:=\E[Y\mid L,H],\qquad m_L:=\E[Y\mid L].}
+\]
+
+\subsection{逐步推导}
+\textbf{Step 1}（条件方差定义）：
+\begin{equation}
+\Var(Y\mid L)=\E\big[(Y-m_L)^2\mid L\big]. \label{eq:s1}
+\end{equation}
+\textbf{Step 2}（对 $\sigma(L)\subseteq\sigma(L,H)$ 用 (P4)）：
+\begin{equation}
+\Var(Y\mid L)=\E\big[\Var(Y\mid L,H)\mid L\big]+\Var\big(\E[Y\mid L,H]\mid L\big). \label{eq:s2}
+\end{equation}
+\textbf{Step 3}（化简右端）。第一项：
+\begin{equation}
+\E\big[\Var(Y\mid L,H)\mid L\big]
+=\E\Big[\E\big[(Y-m_H)^2\mid L,H\big]\Big|L\Big]
+=\E\big[(Y-m_H)^2\mid L\big]. \label{eq:s3}
+\end{equation}
+第二项：$\Var(m_H\mid L)=\E\big[(m_H-\E[m_H\mid L])^2\mid L\big]$，而由 (P1)
+\begin{equation}
+\E[m_H\mid L]=\E\big[\E[Y\mid L,H]\mid L\big]=\E[Y\mid L]=m_L, \label{eq:s5}
+\end{equation}
+故
+\begin{equation}
+\Var(m_H\mid L)=\E\big[(m_H-m_L)^2\mid L\big]. \label{eq:s6}
+\end{equation}
+\textbf{Step 4}（合并 \eqref{eq:s1},\eqref{eq:s3},\eqref{eq:s6} 代入 \eqref{eq:s2}）：
+\begin{equation}
+\E\big[(Y-m_L)^2\mid L\big]
+=\E\big[(Y-m_H)^2\mid L\big]+\E\big[(m_H-m_L)^2\mid L\big]. \label{eq:s7}
+\end{equation}
+这就是原稿 §2.1 的那一行；原稿跳过了 \eqref{eq:s5} 的塔式论证，那是命门。
+\textbf{Step 5}（两边取期望）：
+\begin{equation}
+R_L^*-R_{L,H}^*=\E\big[(m_H-m_L)^2\big]. \label{eq:s8}
+\end{equation}
+
+\subsection{更漂亮的视角}
+$\E[m_H-m_L]=0$ 且 $m_L$ 与 $m_H-m_L$ 不相关（$m_L$ 是 $\sigma(L)$-可测，由 (P2) $\E[m_H m_L\mid L]=m_L^2$，故 $\E[(m_H-m_L)m_L]=0$），所以
+\[
+\E[(m_H-m_L)^2]=\Var(m_H)-\Var(m_L)=\Var(m_H-m_L).
+\]
+即：\textbf{风险下降量 $=$ 条件均值的方差增量。}
+
+\subsection{等号条件（三种等价刻画）}
+\[
+R_L^*=R_{L,H}^*\iff \E[(m_H-m_L)^2]=0\iff m_H=m_L\ \text{a.s.}
+\]
+白话：\textbf{知道 $H$ 后，$Y$ 的条件均值一点都不变。}
+
+\subsection{它不能推出什么（逐条）}
+\begin{enumerate}
+  \item 不能推出``高频一定有用''：$\ge0$ 不是 $>0$。
+  \item 不能推出``我们的模型已达最优''：神经网络只近似条件均值，还有估计/优化/泄漏/成本。
+  \item 不能推出``只看条件均值就够''：$H$ 可能改变\textbf{条件方差或尾部}而不改变条件均值——对主打风险/波动率/VaR 的项目极重要。
+  \item 不能推出``$Z_H$ 分支一定有用''：恒等式在\textbf{原始层}，表征是压缩。
+  \item 不能推出``不用管部署时点''：若 $H$ 在 $t$ 不可得或窗口越界，风险就不可部署。
+  \item 不能把 $\E[(m_H-m_L)^2]$ 叫``互信息''：它是条件均值的二阶矩，不是分布差异。
+  \item 不能换损失：分位数损失（VaR/ES）下恒等式\textbf{不成立}。
+\end{enumerate}
+\textbf{标注}：C-CM-001 恒等式 $=$ \textbf{【既有工具】}（条件期望 $+$ 全方差公式的标准推论），可标 \texttt{INTERNALLY\_CHECKED}，但不是本项目原创。
+
+\section{第 5 层：模型 D 的构造与动机}
+
+\textbf{这是诊断模型，不是金融定理。} 动机：第 4 层的恒等式算不出数值，也看不出``对齐会不会抹掉增量''；需要一个能闭式求解的最小模型。
+
+\subsection{五个原子随机变量（全部 iid $N(0,1)$）}
+\[
+S,\ P_H,\ P_L,\ \xi_H,\ \xi_L\ \stackrel{\text{iid}}{\sim}\ N(0,1),
+\]
+其中 $S$ 为共享潜成分，$P_H,P_L$ 为各模态私有潜成分，$\xi_H,\xi_L$ 为观测噪声。
+
+\subsection{目标}
+\[
+T_\kappa=\frac{S+\kappa(P_H+P_L)}{\sqrt{1+2\kappa^2}},\qquad \kappa\in\{0,1\}.
+\]
+校验：分子方差 $=1+2\kappa^2$，故 $\Var(T_\kappa)=1$（归一化到 1，使``风险''与``方差解释比''同一把尺）。
+$\kappa=0$ 时 $T_0=S$（私有成分不进目标，控制组）；$\kappa=1$ 时 $T_1=\frac{S+P_H+P_L}{\sqrt3}$（私有成分进目标）。
+
+\subsection{两路表征}
+\[
+Z_H=\sqrt{1-\theta}\,S+\sqrt\theta\,P_H+\sqrt\nu\,\xi_H,\qquad
+Z_L=\sqrt{1-\theta}\,S+\sqrt\theta\,P_L+\sqrt\nu\,\xi_L ,
+\]
+$\theta\in[0,1]$ 为\textbf{私有成分占比}，$\nu>0$ 为观测噪声方差。两路结构完全对称，故 $\theta$ 不是``高频专属比例''。
+
+\section{第 6 层：模型 D 的协方差逐步手算}
+
+所有协方差靠双线性 $+$ 独立性：
+$\Cov(\sum_i a_iX_i,\sum_j b_jX_j)=\sum_{i,j}a_ib_j\Cov(X_i,X_j)$，iid $N(0,1)$ 下 $\Cov(X_i,X_j)=\delta_{ij}$。
+
+\subsection{表征方差与互协方差}
+\[
+\Var(Z_H)=(1-\theta)+\theta+\nu=1+\nu,\qquad
+\Cov(Z_H,Z_L)=1-\theta .
+\]
+
+\subsection{目标与表征的协方差（关键量 $u$）}
+\[
+\E[T_\kappa Z_H]=\frac{1}{\sqrt{1+2\kappa^2}}\Big[\underbrace{\E[S\sqrt{1-\theta}S]}_{\sqrt{1-\theta}}+\kappa\underbrace{\E[P_H\sqrt\theta P_H]}_{\sqrt\theta}\Big]
+=\frac{\sqrt{1-\theta}+\kappa\sqrt\theta}{\sqrt{1+2\kappa^2}} .
+\]
+定义
+\begin{equation}
+\boxed{\,u:=\Cov(T_\kappa,Z_H)=\Cov(T_\kappa,Z_L)=\frac{\sqrt{1-\theta}+\kappa\sqrt\theta}{\sqrt{1+2\kappa^2}}.}
+\end{equation}
+于是（\textbf{这是原稿写错的地方}）
+\begin{equation}
+\boxed{\,u^2=\frac{(\sqrt{1-\theta}+\kappa\sqrt\theta)^2}{1+2\kappa^2}
+=\frac{(1-\theta)+\kappa^2\theta+2\kappa\sqrt{\theta(1-\theta)}}{1+2\kappa^2}.} \label{eq:u2}
+\end{equation}
+两个特例：
+\begin{equation}
+\kappa=0:\ u^2=1-\theta;\qquad \kappa=1:\ u^2=\frac{1+2\sqrt{\theta(1-\theta)}}{3}. \label{eq:u2spec}
+\end{equation}
+
+\subsection{一致性损失 $D$}
+\begin{equation}
+\boxed{\,D:=\E[(Z_H-Z_L)^2]=\Var(Z_H)+\Var(Z_L)-2\Cov(Z_H,Z_L)=2(\theta+\nu).\,} \label{eq:D}
+\end{equation}
+
+\section{第 7 层：单路风险 $R_H$ 的推导}
+
+只用 $Z_H$，取最优线性头 $\hat T_H=\alpha+\beta Z_H$。因 $(T_\kappa,Z_H)$ 联合高斯，$\E[T_\kappa\mid Z_H]$ 本身线性，故\textbf{线性最优 $=$ Bayes 最优}（这是高斯专属）。
+正规方程给出 $\beta=\Cov(T,Z_H)/\Var(Z_H)=u/(1+\nu)$、$\alpha=0$。残差方差
+\begin{equation}
+\boxed{\,R_H=\Var(T)-\frac{\Cov(T,Z_H)^2}{\Var(Z_H)}=1-\frac{u^2}{1+\nu}.} \label{eq:RH}
+\end{equation}
+$\kappa=0$ 时 $u^2=1-\theta$：
+\begin{equation}
+R_H=1-\frac{1-\theta}{1+\nu}=\frac{\nu+\theta}{1+\nu}. \label{eq:RH0}
+\end{equation}
+
+\section{第 8 层：双路风险 $R$ 的推导（$2\times2$ 求逆逐步）}
+
+两路都用，由对称性系数相同。
+\[
+\Sigma_Z=\begin{pmatrix}1+\nu & 1-\theta\\ 1-\theta & 1+\nu\end{pmatrix},\qquad c=\begin{pmatrix}u\\ u\end{pmatrix},\qquad
+R=1-c^\top\Sigma_Z^{-1}c .
+\]
+设 $a=1+\nu,\ b=1-\theta$，则
+\begin{equation}
+\det\Sigma_Z=a^2-b^2=(a-b)(a+b)=(\nu+\theta)(2+\nu-\theta)>0 . \label{eq:det}
+\end{equation}
+（特征值为 $a-b=\nu+\theta$ 与 $a+b=2+\nu-\theta$，均正，说明 $\Sigma_Z$ 正定。）
+\[
+\Sigma_Z^{-1}=\frac{1}{\det}\begin{pmatrix}a&-b\\-b&a\end{pmatrix},\qquad
+c^\top\Sigma_Z^{-1}c=\frac{2u^2(a-b)}{\det}=\frac{2u^2(\nu+\theta)}{(\nu+\theta)(2+\nu-\theta)}=\frac{2u^2}{2+\nu-\theta}.
+\]
+于是
+\begin{equation}
+\boxed{\,R=1-\frac{2u^2}{2+\nu-\theta}.} \label{eq:R}
+\end{equation}
+$\kappa=0$ 时 $u^2=1-\theta$：
+\begin{equation}
+R=1-\frac{2(1-\theta)}{2+\nu-\theta}=\frac{\nu+\theta}{2+\nu-\theta}. \label{eq:R0}
+\end{equation}
+
+\section{第 9 层：单路 vs 双路}
+
+\subsection{差值恒非负}
+\begin{equation}
+R_H-R=u^2\Big[\frac{2}{2+\nu-\theta}-\frac{1}{1+\nu}\Big]
+=\frac{u^2(\nu+\theta)}{(1+\nu)(2+\nu-\theta)}\ \ge0 . \label{eq:gap}
+\end{equation}
+\textbf{结论：$R\le R_H$，双路永不更差。}
+
+\subsection{一个必须记住的数}
+取 $\theta=\tfrac12,\ \nu=1,\ \kappa=1$：
+\[
+u^2=\frac{1+2\sqrt{1/4}}{3}=\frac23,\qquad
+R_H=1-\frac{2/3}{2}=\frac23,\qquad
+R=1-\frac{2\cdot(2/3)}{2+1-1/2}=\frac{7}{15}.
+\]
+差 $R_H-R=\frac23-\frac{7}{15}=\frac15$。
+
+\subsection{红线}
+若线上只有 $Z_H$，真实部署风险是 $R_H=\frac23$，而 $R=\frac{7}{15}$ \textbf{低估了 $\frac15$}。
+\textbf{报哪个风险取决于推理时到底有几路}（对应 X-10 的 $B$ 位）。
+
+\section{第 10 层：$\Delta I$ 的推导（高斯熵 $+$ 条件互信息）}
+
+\subsection{高斯熵}
+方差为 $v$ 的一维高斯，微分熵（nats）$h=\frac12\ln(2\pi e\,v)$。
+
+\subsection{单路与双路互信息}
+\begin{equation}
+I(T;Z_H)=h(T)-h(T\mid Z_H)=\frac12\ln(2\pi e)-\frac12\ln(2\pi e R_H)=-\frac12\ln R_H,\quad
+I(T;Z_H,Z_L)=-\frac12\ln R .
+\end{equation}
+
+\subsection{条件互信息}
+\begin{equation}
+\boxed{\,\Delta I=I(T;Z_L\mid Z_H)=I(T;Z_H,Z_L)-I(T;Z_H)=\frac12\ln\frac{R_H}{R}\quad(\text{nats}).} \label{eq:dI}
+\end{equation}
+由 $R\le R_H$ 得 $\Delta I\ge0$；且 $\Delta I\le I(T;Z_H,Z_L)$。
+
+\subsection{警告：$\Delta I$ 不含``私有贡献''的意思}
+取 $\theta=0$（根本没有私有成分）、$\kappa=0$：
+\[
+u^2=1,\quad R_H=\frac{\nu}{1+\nu},\quad R=\frac{\nu}{2+\nu},\quad
+\Delta I=\frac12\ln\frac{2+\nu}{1+\nu}>0 .
+\]
+两路只是``同一目标 $+$ 独立噪声''的两次观测，$\Delta I$ 仍为正——它是\textbf{去噪增益}，不是私有信息（对应回归测试 T6）。
+
+\section{第 11 层：有限性、边界与 $\nu\to0$（路径依赖）}
+
+\begin{itemize}
+  \item $\nu>0$ 且 $\Sigma_Z$ 正定 $\Rightarrow R>0$，故 $\Delta I$ 有限。
+  \item $R_H\ge \frac{\nu}{1+\nu}>0$（用 $u^2\le1$）。
+  \item $\nu\to0$ 的极限\textbf{依赖参数路径}：
+  \begin{itemize}
+    \item 路径 A：$\nu\to0$ 且 $\theta$ \textbf{固定}在 $0.8$（$\kappa=1$）$\Rightarrow R\to0\Rightarrow \Delta I\to+\infty$；
+    \item 路径 B：$\nu\to0$ 且 $\theta\to0$ $\Rightarrow R\to\frac23,\ R_H\to\frac23\Rightarrow \Delta I\to0$。
+  \end{itemize}
+\end{itemize}
+所以``$\nu\to0$ 必发散''是错的。无噪声（$\nu=0$）时互信息真正发散，历史上的 $I=18.37$、$\Delta I=344.9$ 是截断伪值，\textbf{已作废、不得引用}。
+
+\section{第 12 层：多目标路径（命题 O / 定理 A / 定理 B / 命题 C）}
+
+\subsection{罚项设定}
+\begin{equation}
+\theta_\delta\in\arg\min_{\theta\in[0,1]}\ \big[R(\theta)+\delta\,D(\theta)\big],\qquad D(\theta)=2(\theta+\nu)\ \text{严格递增}. \label{eq:path}
+\end{equation}
+
+\subsection{命题 O（【既有工具】）}
+设 $\theta_i$ 为 $\delta_i$ 处任意全局最优（$0\le\delta_1<\delta_2$），则
+\[
+D(\theta_2)\le D(\theta_1),\qquad R(\theta_2)\ge R(\theta_1),\qquad \theta_2\le\theta_1.
+\]
+\textbf{证明}：由最优性 $R_1+\delta_1D_1\le R_2+\delta_1D_2$ 与 $R_2+\delta_2D_2\le R_1+\delta_2D_1$，相加得 $(\delta_2-\delta_1)(D_2-D_1)\le0$，即 $D_2\le D_1$；代回得 $R_2\ge R_1$；再用 $D=2(\theta+\nu)$ 得 $\theta_2\le\theta_1$。$\square$
+
+\subsection{定理 B（模型内已证）}
+\[
+\arg\min_{\theta}\big[R+\delta D\big]\subseteq[0,\theta_0],\qquad \theta_0\in\arg\min R .
+\]
+\textbf{证明}：设 $\theta>\theta_0$，则 $R(\theta)\ge R(\theta_0)$ 且 $D(\theta)>D(\theta_0)$，故对任意 $\delta>0$，$R(\theta)+\delta D(\theta)>R(\theta_0)+\delta D(\theta_0)$，$\theta$ 不是极小点。$\square$
+\textbf{不依赖 $R$ 的凸性，也不需要唯一性。}
+
+\subsection{定理 A（$\kappa=0$，模型内已证）}
+\begin{equation}
+\Delta I(\theta)=\frac12\ln\frac{2+\nu-\theta}{1+\nu},\qquad
+\frac{d\Delta I}{d\theta}=-\frac{1}{2(2+\nu-\theta)}<0 .
+\end{equation}
+且 $\kappa=0$ 时 $\partial_\theta R=\frac{2(1+\nu)}{(2+\nu-\theta)^2}>0$、$\partial_\theta D=2>0$，故 $\arg\min[R+\delta D]\equiv0$，沿 $\delta$ 路径
+\[
+\Delta I=\frac12\ln\frac{2+\nu}{1+\nu}=\text{常数}.
+\]
+\textbf{读法}：控制组没有可损的互补信息，对齐强度对条件互信息无影响（恒定）。
+
+\subsection{命题 C（$\kappa=1$，仅数值支持）}
+声称 $\frac{d\Delta I}{d\theta}>0$ 于 $[0,\theta_0]$，结合定理 B 与 $\frac{d\theta}{d\delta}\le0$（数值观察）$\Rightarrow$ $\Delta I$ 沿 $\delta$ 不增。
+$\theta\ge\frac12$ 段有解析论证；$\theta<\frac12$ 段\textbf{无解析证明}；$\theta_\delta$ 全局最优性仅网格扫描支持，未证拟凸。\textbf{引用时必须写``仅数值支持''。}
+
+\section{第 13 层：对齐损失 $L_{\text{align}}$}
+
+\subsection{四种不同含义}
+边缘分布对齐、条件分布对齐、联合分布对齐、\textbf{配对样本的表征距离最小化}。原稿候选是第四种。
+
+\subsection{候选形式与前提}
+\begin{equation}
+L_{\rm align}=\E\big[\|\phi_H(Z_H)-\phi_L(Z_L)\|^2\big]. \label{eq:align}
+\end{equation}
+它只在五个前提同时成立时有语义：配对（同一预测时点）、尺度（可比）、维度（同空间）、时间戳（无泄漏）、相关（共享子空间与目标相关）；此外还有部署可得性。
+
+\subsection{病一：尺度退化（缩放逃逸）}
+同步缩放 $(\phi_H,\phi_L)\mapsto(s\phi_H,s\phi_L)$。若头是线性的，它可按 $1/s$ 反缩放，于是 $R$ 不变而 $D_{\rm align}\mapsto s^2D_{\rm align}$。因此
+\[
+\inf_{s>0}\big[R+\delta D_{\rm align}\big]=R+\delta\cdot0^{+}=R,
+\]
+该下确界在 $s>0$ 上\textbf{取不到}；$s=0$ 处是零表示，线性头只能输出常数，$R=1$，目标值 $=1$——\textbf{它和下确界不是同一个对象}。
+\textbf{对策}：显式锚定尺度（归一化层 / 固定头 / 尺度约束）。
+
+\subsection{病二：抹掉私有信息}
+把高频表征分成共享与私有：$Z_H=(S_H,P_H)$。若
+\begin{equation}
+\E[Y\mid L,P_H]\ne\E[Y\mid L], \label{eq:priv}
+\end{equation}
+则 $P_H$ 仍含条件增量。此时强行让完整 $Z_H$ 对齐 $Z_L$，可能压掉 $P_H$，增量消失。
+
+\subsection{病二是有条件的：边界反例}
+若私有成分与目标\textbf{无关}（$\kappa=0$ 类比），对齐是\textbf{免费}的，甚至能抑制噪声。故``对齐必有害''与``对齐必有效''都错；张力成立的条件是\textbf{私有成分对目标有贡献（$\kappa=1$）}。
+
+\subsection{设计建议（不是定理）}
+只对齐 $\phi_H(Z_H)$ 与 $\phi_L(Z_L)$ 这个\textbf{拟共享子空间}，把私有分量留给预测头；并用三组消融比较：全量对齐 / 共享子空间对齐 / 不对齐。
+
+\section{第 14 层：路线 A / B / C}
+
+\begin{longtable}{p{0.14\textwidth}p{0.25\textwidth}p{0.26\textwidth}p{0.22\textwidth}}
+\toprule
+& \textbf{A 输入级融合} & \textbf{B 表征级双分支} & \textbf{C 输出级辅助任务}\\
+\midrule
+工程实现 & 高频聚合统计拼进 K 线/Kronos 输入 & Kronos 出 $Z_L$、高频编码器出 $Z_H$，头同时吃两路 & 主预测外做风险/重构/蒸馏/状态分类\\
+理论对象 & 仍是单路 $L'=\text{concat}(L,\text{agg}(H))$；对齐理论不直接适用 & 最接近 C-CM-001 / C-CM-004 & 多任务正则/监督约束，不是表征对齐\\
+主要风险 & 改变 Kronos 预训练输入分布；窗口/事件时间/尺度；窗口越界泄漏 & 配对、尺度、语义、部署可得性；对齐可能抹掉私有信息 & 辅助任务改变目标风险；权重需预注册；可能引入未来标签/代理泄漏\\
+\bottomrule
+\end{longtable}
+
+\section{第 15 层：X-10 决策框架（五位布尔 $+$ $G$）}
+
+\textbf{五位}（只描述接口）：$P$ 实际对齐项是同一预测时点、正确配对的平方距离；$A$ 表示尺度被固定锚定；$H$ 部署头是平方损失下 Bayes 最优仿射头（或实际头风险已区分）；$B$ 部署时两路都可得且都进头；$S$ 目标是标量、风险是总体平方风险。
+另有 $G$：线性高斯潜变量、独立噪声、固定 $\nu>0$、目标方差归一化、固定可行域、正确总体风险、无未来信息。
+
+\textbf{路由}（``第一项不满足''优先，互斥且覆盖 32 组合）：
+\begin{itemize}
+  \item \texttt{0****}（16 种）F-P：实际损失不能写成固定倍数配对平方；保留原式，用部署风险门槛 $U$ 选权重；
+  \item \texttt{10***}（8 种）F-A：尺度未锚定，对齐权重没有可比单位；
+  \item \texttt{110**}（4 种）P-H：实际头风险不能标为 $R$ 或 $R_H$；
+  \item \texttt{1110*}（2 种）P-B：缺一路，主风险改记 $R_H$；
+  \item \texttt{11110}（1 种）P-S：目标非标量，标量闭式不保留；
+  \item \texttt{11111}（1 种）D：五项 $+$ $G$ 都成立才接受四闭式与定理 A/B（命题 C 仍不用于设计）。
+\end{itemize}
+\textbf{候选权重}（工程初始化，非理论阈值）：$\delta_c=\eta\,\widehat R_{{\rm dep},0}/\widehat D_0$，$\eta=0.01$。
+\textbf{验收规则 $U$}：同一冻结评估集、同一标签成熟规则、同一部署输入，比较候选与 $\delta=0$ 基线；预登记 $\epsilon$；风险差区间上界 $\le\epsilon$ 才通过。
+
+\section{第 16 层：四类清单（讲的时候必须贴标签）}
+
+\begin{longtable}{p{0.2\textwidth}p{0.72\textwidth}}
+\toprule
+类别 & 内容\\
+\midrule
+已证明（模型内） & ① C-CM-001 风险恒等式（有限二阶矩 $+$ 平方损失 $+$ 总体量）② 定理 A（$\kappa=0$，$\Delta I$ 沿路径恒定）③ 定理 B（$\arg\min\subseteq[0,\theta_0]$，不依赖凸性）④ 命题 O / C-CM-005-O（最优参数次序，不需唯一性）\\
+条件性推导 & 四闭式（依赖线性高斯 $+$ 固定机制 $+$ 仿射头 $+$ 双路部署）；$\Delta I=\frac12\ln(R_H/R)$ 作条件信息（仅高斯）；``路线 B 最接近理论对象''；命题 C（$\kappa=1$，仅数值支持）\\
+设计建议（不是定理） & 只对齐共享子空间、保留私有分量；三组消融；先做 X-10 审计 $+$ 严格三基线；DS-CM-001 路由与 $U$ 规则；$\delta_c$ 初始化\\
+待核验问题 & X-10（实际 $L_{\rm align}$ 未定义）；X-08（命题 C 的 $\theta<1/2$ 段、$\theta_\delta$ 拟凸）；X-06/X-09（命题 O、G1、G2、$B=A+I$、I--MMSE 文献出处未核验）；X-03（$\omega$ 取值冲突）；X-04（Diffusion/Flow 接入空间）；``扫描唯一极小 $\ne$ 全局证明''\\
+\bottomrule
+\end{longtable}
+
+\section{第 17 层：这份稿子对项目到底改什么}
+
+\begin{itemize}
+  \item \textbf{模型选择}：阻止``直接全量对齐 / 直接上路线 A''当默认；先固定预测时点；保留严格单路基线。
+  \item \textbf{损失设计}：若用 $L_{\rm align}$，必须成对平方 $+$ 尺度锚定 $+$ 只作用共享子空间，否则退回 $\delta=0$；路线 C 按多任务处理，不叫对齐；交易要加成本项。
+  \item \textbf{数据切分与实验}：固定时点，训``只用 $L$ / 只用 $H$ / 双路''三基线，同一时间切分与调参预算；报告区间 $+$ 状态分层 $+$ 成本后效用；监控 $D_{\rm hat}/R_{H,\rm hat}/R_{\rm hat}$；缺一路记 NA。
+  \item \textbf{会拦下的错误结论}：①``高频更细 $\Rightarrow$ 一定有用''；②``对齐必有害/必有效''；③把 $\Delta I$ 当私有信号贡献；④把 $R_H$ 与 $R$ 混用；⑤``扫描到极小点 $=$ 全局唯一''；⑥``脚本 PASS $=$ 公式正确''；⑦``$\nu\to0$ 必发散''；⑧引用 $I=18.37$。
+\end{itemize}
+
+\section{第 18 层：贯通索引（层号 $\leftrightarrow$ 原稿章节）}
+
+\begin{longtable}{p{0.28\textwidth}p{0.18\textwidth}p{0.42\textwidth}}
+\toprule
+原稿章节 & 本文层 & 一句话内容\\
+\midrule
+\S1 先把四件事连起来 & 第 0、3 层 & 链条 $(L,H)\to(Z_L,Z_H)\to\widehat Y$；表征有损\\
+\S2.1 C-CM-001 恒等式 & 第 1、2、4 层 & 全方差公式 $\Rightarrow$ 风险差 $=$ 条件均值方差\\
+\S2.2 模型 D 四闭式 & 第 5--10 层 & $\theta,\nu,\kappa$ 潜变量 $\Rightarrow u^2,D,R_H,R,\Delta I$\\
+\S2.2 边界声明 & 第 11 层 & $\nu\to0$ 路径依赖；有限性\\
+\S3 三条路线 A/B/C & 第 14 层 & 工程 $\leftrightarrow$ 理论 $\leftrightarrow$ 风险\\
+\S4 X-10 对齐 & 第 13 层 & 四种含义 $+$ 尺度退化 $+$ 私有信息\\
+\S5 四条理论路线 & 第 12、15 层 & 命题 O / 定理 A/B / 命题 C / 路由\\
+\S6 组会应决定的事 & 第 17 层 & 六问 $+$ 一页表格\\
+\S7--\S10 说法与行动 & 第 16、17 层 & 四类清单 $+$ 最小行动\\
+\bottomrule
+\end{longtable}
+
+\section{第 19 层：自检点}
+
+\begin{enumerate}
+  \item 为什么 $\E[m_H\mid L]=m_L$？（塔式 P1）
+  \item 恒等式右边为什么 $\ge0$？等号何时成立？不覆盖什么？（条件方差；$m_H=m_L$ a.s.；不覆盖条件方差/尾部）
+  \item 为什么线性头在模型 D 里就是 Bayes 最优？（联合高斯）
+  \item $u^2$ 的正确公式？$\kappa=0,1$ 分别是什么？\eqref{eq:u2},\eqref{eq:u2spec}
+  \item $R_H-R$ 等于什么？为什么 $\ge0$？\eqref{eq:gap}
+  \item $\Delta I=\frac12\ln(R_H/R)$ 在 $\theta=0$ 时为何仍 $>0$？（去噪增益）
+  \item 尺度退化时下确界为何不取到？$s=0$ 是什么？（逃逸；零表示，$R=1$）
+  \item 定理 B 为何不需要凸性？（只用``全局最小 $+$ $D$ 严格增''）
+  \item 命题 C 现在能不能用？（不能，仅数值支持）
+  \item 当前唯一真正的项目阻塞是什么？（X-10）
+\end{enumerate}
+
+\section{重建过程中指出的 6 处原稿问题}
+
+\begin{enumerate}
+  \item \textbf{\S2.2 的 $u^2$ 公式错误}（真错）：原稿写 $u^2=\frac{1-2\theta}{2(\theta+\nu)}$，在 $\theta=\frac12$ 给 $0$、$\theta>\frac12$ 给负值；对一个平方协方差不可能。正确为 \eqref{eq:u2}。
+  \item \textbf{丢掉 $\kappa$}：原稿把 $\theta$ 写成``高频私有信号比例''且全文无 $\kappa$；而``对齐是否抹掉私有信息''的张力只在 $\kappa=1$ 存在。
+  \item \textbf{结果编号与 \texttt{research/claims/} 不一致}：原稿的 \texttt{C-CM-001}/\texttt{C-CM-002} 与同名结果卡内容不同；风险恒等式在 claims 中未登记。建议单独立卡并标【既有工具】，四闭式改标 \texttt{C-CM-003/004}。
+  \item \textbf{身份标注}：\S2.1 恒等式是标准工具，不应标``推导结果 / 本项目成果''。
+  \item \textbf{目标与损失口径未声明}：主指标若是 VaR/ES（分位数），平方损失恒等式不适用，须另立损失与结论。
+  \item \textbf{编码器性质未提}：原稿默认 $Z_L=E_L(L)$、$Z_H=E_H(H)$ 确定；若用随机编码器，第 3 层的集合包含关系须改写为条件期望形式。
+\end{enumerate}
+
+\end{document}

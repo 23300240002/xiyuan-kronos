@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.DS_Store
+.qwen/
+*.tmp
+arXiv-2508.02739v1.tar.gz
+六、导师推荐意见.pdf
+迭代/微信图片_*
+*.write_test

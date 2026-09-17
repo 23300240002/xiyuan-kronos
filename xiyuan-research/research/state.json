@@ -1,0 +1,177 @@
+{
+  "run_id": "2026-09-17-deep-research-absorption",
+  "active_task": "deep-research A-F 吸收整合 + 修复层/桥接层落地",
+  "cycle_count": 4,
+  "task_statuses": {
+    "TP1": "UNSCOPED",
+    "TP2": "BLOCKED",
+    "TP3": "UNSCOPED",
+    "TP4": "UNSCOPED",
+    "TP5": "UNSCOPED",
+    "TP6": "UNSCOPED",
+    "TP7": "UNSCOPED",
+    "TP8": "UNSCOPED",
+    "TP9": "PARTIAL",
+    "TP10": "UNSCOPED",
+    "TP11": "UNSCOPED",
+    "TP12": "CONJECTURED",
+    "TP13": "DRAFTED_PENDING_FREEZE",
+    "TP14": "UNSCOPED"
+  },
+  "sub_results": {
+    "C-T9-002.gaussian_subproblem": {
+      "parent_task": "TP9",
+      "status": "SEALED"
+    },
+    "C-CM-004.crossmodal_diagnostic": {
+      "parent_task": "TP9-branch-C",
+      "status": "PHASE_CLOSED",
+      "proven": [
+        "定理A (kappa=0): dDeltaI/dtheta = -1/[2(2+nu-theta)] < 0；theta*≡0 ⟹ DeltaI 沿路径恒定",
+        "定理B: 任意 delta>0 的全局最优位于 [0, theta0]（证明不依赖凸性）",
+        "定理C (kappa=1, 2026-09-17 由 CONJECTURED 升级): dDeltaI/dtheta>0 于整个 [0,theta0]（theta>=1/2 段原论证 + theta<1/2 段四项分解 N=3nu^2(1-2th)+6nu(1+w-2th^2)+4w(1-2w^2)+th(6th^2-19th+10) 全非负，w<=1/2 且 6th^2-19th+10=6(th-2/3)(th-5/2)>0）；dtheta/ddelta<=0 为命题 O 推论 ⟹ DeltaI 沿 delta 路径不增（模型内定理）"
+      ],
+      "conjectured": [],
+      "existing_tools_pending_verification": [
+        "命题O 未找到编号权威出处 → 保留 3 行自证并注【既有工具】（deep_E §1(7)）",
+        "残余编号项：CT2 定理号 / Durrett 编号 / B=A+I 出处（deep_E §5#1-3；G1/G2/I-MMSE 已一手核 GSVD 2005 eq.(9)(11)-(13)(15)(29)(86)）"
+      ],
+      "regression": {
+        "script": "scripts/verify_theorem_card.py + scripts/verify_proposition_C.py（2026-09-17 新增，5/5 PASS）",
+        "runtime_s": 2.7,
+        "derivative_check": "解析 vs 三步长差分，|diff|<=1.2e-9；verify_proposition_C：符号恒等 simplify=0、50 位恒等 ≤1.1e-50、中心差分 ≤1.6e-31",
+        "path_checks": "kappa in {0,1}, nu in {0.5,2}: R不减/D不增/DeltaI不增 全 True"
+      }
+    },
+    "DS-CM-001.alignment_decision_spec": {
+      "parent_task": "TP9/X-10",
+      "status": "DELIVERED_PENDING_X10_ANSWERS",
+      "path": "reports/DS-CM-001_decision_ready_spec.md",
+      "on_disk_verification_2026-09-10": "独立落盘核对：文件存在且内容完整；32 位组合码去重后覆盖全部 32 个（16+8+4+2+1+1）；11101 失效组合算术核对 R_H-R=2/3-7/15=1/5 正确；预算字段已如实为『1 个分析轮次』；scripts/ 仍为原有 8 个 .py 文件，无新增模型或扫描。"
+    },
+    "C-X10-001.real_kronos_context_interface": {
+      "parent_task": "TP9/X-10",
+      "status": "INTERNALLY_CHECKED_BLOCKED_ON_PROJECT_DEFINITION",
+      "path": "claims/C-X10-001.md",
+      "proven_or_observed": [
+        "KronosLocal 的 Kronos.decode_s1 返回 [B,T,d_model] context；Kronos-small 本地权重实测 d_model=512",
+        "现有 KronosPredictor 与 FastAPI 服务只返回预测 OHLCVA 路径，没有 context、pair_key 或 L_align 接口",
+        "scripts/audit_kronos_x10.py 已实际运行：context=(1,8,512)、logits=(1,8,1024)、重复差=0，PASS"
+      ],
+      "not_established": [
+        "实际 L_align 的对齐对象",
+        "高低频同一 cutoff 的配对和部署可得性",
+        "共享投影的尺度锚定与部署预测头",
+        "模型 D 对真实神经表征的适用性"
+      ]
+    },
+    "C-X03-001.noise_floor_first_calibration": {
+      "parent_task": "X-03 / 噪声地板线（推导骨架 §2-4）",
+      "status": "INTERNALLY_CHECKED_FIRST_PASS_UNDECIDED",
+      "path": "claims/C-X03-001.md",
+      "proven_or_observed": [
+        "标定协议落地：research/scripts/calibrate_noise_floor.py（签名图法，WLS 主估计 + 未加权对照，确定性离线，两样本均 PASS）",
+        "主样本（BTC 2024-08-31 全天，1439 个 1min 收益，8 频点）：ρ(1min)∈[0.734,0.890]，σ/24h≈1.78-1.91%，AR(1)=-0.0566，比值 σ²_min/(2ω²)∈{2.76,8.11} 均 ≥ 占位 A 的 2.7",
+        "辅样本（2026-09-08 一小时，59 收益，3 频点）：WLS ρ(1min)=0.434 落 B 侧量级——示范该样本量下斜率对加权极敏感、无判别力"
+      ],
+      "not_established": [
+        "A 股 ω=0.05% vs 0.1% 终判（本地代理数据不足，待 Tushare stk_mins 多日数据重跑）",
+        "纯 bid-ask bounce ω（K 线收盘价量到的是有效观测噪声，L2 逐笔待做）",
+        "跨日/跨票稳定性（单日半段 ω² 漂移 24-73%）",
+        "签名图法标准文献出处已核（deep_E §3b，2026-09-17）：Hansen-Lunde 2006 JBES Lemma 4 主锚（E[RV]=IV+2mω² 与本项目 A1+A2 逐字对应；其 var(RV) 式是 WLS 权重对偶）、Bandi-Russell 2008 ReStud 75(2):339-369（本卡初稿误书 2006 已改）、术语命名 Andersen-Bollerslev-Diebold-Labys 2000 (Risk 13(3))、优先权 Fang 1996/Zhou 1996；Lo-MacKinlay 1988 仅作 AR(1)/方差比诊断锚非斜率标定式；残余：HL 正式版页码 [二手]"
+      ]
+    },
+    "C-T9-003.align_candidate_space": {
+      "parent_task": "TP9/X-10 branch-C",
+      "status": "INTERNALLY_CHECKED_NO_EXPERIMENTS",
+      "path": "claims/C-T9-003.md",
+      "content": "L_align 候选空间：3 主候选（C1 冻结低秩映射成对平方一致性——唯一与模型 D 解析兼容，deep_B §4.1；C2 预测层对齐——S=1 通道，需重定义 D_hat；C3 正则CCA 降为诊断）+2 消融（InfoNCE/MMD）+排除清单（KCCA/RKD/DTW/MI估计目标）；血统全部 deep_B [一手]（个别 U 项如实挂起）；S 位=分水岭"
+    },
+    "TP13.benchmark_spec_draft": {
+      "parent_task": "TP13",
+      "status": "DRAFTED_PENDING_GROUP_FREEZE",
+      "path": "reports/TP13_benchmark_spec_draft_v0.1.md",
+      "content": "14 项决策登记（锚点白名单/source_delay=1窗/max_lag=2Δ/keep_NA/walk-forward W=20d H=5d/实体三套并列/purge_before=h/embargo e=max(h,L_feat)[推导]/折内拟合边界/n_eff⌊n/(h+1)⌋/HAR-RV+Corsi 逐字+双朴素闸门/预注册 14 项含失败声明）；依据 deep_C R1–R23，U1–U8 未核实项如实标注"
+    },
+    "bridge.v0.1_evidence_machine": {
+      "parent_task": "TP9/X-10",
+      "status": "INTERNALLY_CHECKED_SMOKE_ONLY",
+      "path": "research/scripts/crossmodal_bridge.py",
+      "content": "PairKey 结构契约 + T1–T7 时间/形状审计 + P/A/B/S 数据层 provisional 证据与 H='?' + provisional D_pair（冻结种子、自带 NOT-a-design-basis 状态行）；--smoke PASS；真实配对验收待数据快照（本地盘口与K线不同日）"
+    },
+    "C-T12-002.feature_increments": {
+      "parent_task": "TP12-Y3-restatement",
+      "status": "INTERNALLY_CHECKED",
+      "path": "claims/C-T12-002.md",
+      "proven": [
+        "命题1: I(x; g(Y)|Ỹ) ≤ I(x; Y|Ỹ) ≤ H(Y|Ỹ)（条件数据处理不等式；对 x 机制无假设）",
+        "推论1: Ỹ=Y（无损输入）时技术指标增量恰为 0",
+        "推论2: 量化器族渐近无损（H(Y|Q_k(Y))->0）⟹ 支撑内增量 -> 0",
+        "命题2: 支撑外构造——Ỹ=Y 无损且 I(x;X_M|Ỹ)=1 bit",
+        "命题3: 两项分解 I(x;X|Ỹ)=I(x;X_T|Ỹ)+I(x;X_M|Ỹ,X_T) ≤ I(x;Y|Ỹ)+I(x;X_M|Ỹ)"
+      ],
+      "verification": "scripts/verify_t12_feature_bound.py 已实际运行，最终 ALL PASS（11/11，精确分数枚举，无随机数）。关键值：A1 0.5≤1.0≤1.0；A2 0.139036≤0.278072=1-Hb(0.2)；A3 等号 1.0=1.0；B 保真度族 I(x;Y|Ỹk)=(1,1,0), H(Y|Ỹk)=(2,1,0)，无损点增量为 0；C 无损下 I(x;X_M|Ỹ)=1。",
+      "implementation_bugs_fixed_before_final_values": [
+        "_cmi_bits 条件分布未按 P(Z) 归一化（第一版）",
+        "_h_cond_bits 取错指标索引，H(X_i|X_z) 误为 H(X_0|X_z)（第二版；修前 Test B 的 H 列为 1,1,0，应为 2,1,0）"
+      ]
+    }
+  },
+  "new_or_changed_claims": [
+    "DS-CM-001 登记：上一轮日志声称已登记 state.json，但落盘文件未体现（state.json mtime 17:01 早于规格 19:17）；本轮独立核对规格内容后实际补登记",
+    "C-T12-002 新建：Y3 重新表述（命题 1–3 带证明 + 已运行精确数值核验）",
+    "C-T12-001 更新：Y3 依据/可证伪问题/推翻条件/现状改为指向 C-T12-002；§3.1 处置关闭；§5 动作 1 标记完成",
+    "C-CM-004 新建：合并定理卡（既有工具与候选推论分开标注；两条已证、一条猜想；分支阶段性收口）",
+    "C-CM-003 的 Delta I 单调性结论被 C-CM-004 吸收；C-CM-002 仍为控制模型"
+    ,"C-X10-001 新建：真实 Kronos context 接口已定位并用本地权重实跑；X-10 从完全未知缩小为高频配对/对齐对象/部署头三类待定义问题"
+    ,"private_group_meeting_crossmodal.tex 修正：模型 D 的 u^2 改为含 kappa 的正确闭式，结果卡编号改为 C-CM-004"
+    ,"C-X03-001 新建：ω 签名图首版标定（BTC 1min K 线代理，WLS+OLS 双口径四拟合）；主样本支持 A 侧量级、辅样本示范小样本无判别力；X-03 维持未决，终判交付 Tushare 多日数据+L2；notation.md 冲突 1 与 dependency_graph.md X-03 同步登记"
+    ,"命题C→定理C（模型内）：theta<1/2 段四项分解解析证明落地（deep_E §2.4 候选 → verify_proposition_C.py 项目侧独立复跑 5/5 PASS）；dtheta/ddelta<=0 正名为命题 O 推论；X-08 CLOSED、X-09 PARTIALLY_CLOSED（GSVD 2005 一手核）；C-CM-004 §1.6/§3.3/§4/§5/§6 与 C-X03-001 §1 引用块同步更新"
+    ,"hf_data_pipeline v2（C-CODE-HF-001 重写）：按 deep_A/deep_C 双独立审计修复 8 类定义级偏差——OFI 全窗求和（真实盘口 8/8 窗失真、2 窗符号翻转、max Δ=11.4 实测在案）、全 bin 网格+稀疏窗 NaN、mid_return/RV 统一边界口径、align 多资产修复+有界陈旧度、side_semantics 必填（Binance maker 反号陷阱）、标签 RV 口径+时间网格连续性校验、assume_tz 全必填、book_slope 正名；测试 9 组（T1–T9 含多资产/缺口/陈旧/稀疏 fixture）全 PASS；v1 输出（data/features/*.parquet）作废登记"
+    ,"deep research A–F 六报告落盘并全部消化（文献调研/deep_2026-09-17/ + inventory）；crosswalk 文献列回填 T-1..T-10；引用卫生入 README 纪律 5（deep_A/B/C 共证伪 9+ 条记忆式假引用，综述 Joss/PR#227 措辞已更正）"
+    ,"C-T9-003 新建（L_align 候选空间，分支 C 建模空白闭合）；TP13_benchmark_spec_draft_v0.1 新建（14 项决策，待组冻结）；crossmodal_bridge v0.1 新建（PairKey/审计/五位证据，--smoke PASS）；adapter D1 截断修复+等价性认知更正（截断≡官方 predictor 语义：全 lookback 归一化+最后 512 token）；task_board/STATUS 同步重写；安全登记：抓取通道出现提示注入尝试（deep_B §0-6，未执行）"
+  ],
+  "assumption_changes": [],
+  "invalidated_artifacts": [
+    "verify_theorem_card.py 第一版把 nu 误当作 kappa 传入 u2/du2 → 修正；修正前 [5] 误报『存在反例』",
+    "『nu->0 时 Delta I 必然发散』→ 更正为路径依赖（theta 固定于 0.8 才发散；theta->0 时极限为 0）"
+    ,"private_group_meeting_crossmodal.tex 原版 u^2=(1-2theta)/[2(theta+nu)] 作废；正确式为 (sqrt(1-theta)+kappa sqrt(theta))^2/(1+2kappa^2)"
+  ],
+  "blockers": [
+    {
+      "id": "X-07",
+      "desc": "R_H = lambda + (1-lambda)R 与 lambda",
+      "status": "CLOSED",
+      "resolution": "两轮检索确认项目与文献中均无来源；其唯一来源是协议消息本身。不作为验收条件，不构成阻塞"
+    },
+    {
+      "id": "X-08",
+      "desc": "命题C 的 theta<1/2 段无解析证明；theta_delta 的全局最优性未证拟凸",
+      "status": "CLOSED",
+      "resolution": "2026-09-17：theta<1/2 段由四项分解引理关闭（deep_E §2.4 提供候选证明 → scripts/verify_proposition_C.py 项目侧独立复跑 5/5 PASS：sympify simplify=0、50 位恒等 ≤1.1e-50、中心差分 ≤1.6e-31、无代数网格单调全正）；dtheta/ddelta<=0 查明为命题 O 的推论（此前误记『数值观察』）；拟凸性不再阻塞任何定理（定理 B 不依赖凸性）。命题 C 已升级定理 C（模型内）"
+    },
+    {
+      "id": "X-09",
+      "desc": "既有工具 O/G1/G2 文献出处未核验",
+      "status": "PARTIALLY_CLOSED",
+      "resolution": "2026-09-17（deep_E §1）：I-MMSE/G1/G2 一手已核——GSVD 2005（IEEE T-IT 51(4):1261-1282）eq.(9)(11)-(13)(15)(29)(86) 逐字抄录；Kay 1993 Thm 11.1 [二手]；命题 O 未找到编号权威出处 → 保留 3 行自证并注【既有工具】。残余：CT2/Durrett/B=A+I 定理编号（deep_E §5#1-3）。θ-单调性文献未覆盖（deep_E §2），正式主张新颖前按 §5#7 关键词再补一轮检索并请导师确认（负命题不可穷尽）"
+    },
+    {
+      "id": "X-10",
+      "desc": "真实 Kronos 的低频 context 已定位并实跑；实际 L_align 的共享对象、高频 cutoff 配对、尺度锚定、部署预测头与两路可得性仍未定义",
+      "blocks": [
+        "把 C-CM-004 作为项目设计依据"
+      ],
+      "需要": "项目组填写高频 pair schema，并明确 L_align 对象与部署头；随后实现 context adapter"
+    }
+  ],
+  "next_actions": [
+    "X-10：按 reports/NEXT_TASK_X10_CONTEXT_ADAPTER.md 实现真实窗口 context adapter；先由项目组固定 pair_key、HF window、label window 和 L_align 对象",
+    "X-10：答复后按 DS-CM-001 §2 填五位代码并直接路由；未答复时 delta 固定为 0，不新增跨模态玩具模型",
+    "TP12：Y3 重述完成；tokenizer 一手代码已读，确认 20-bit token 与可取出的 AR context；20->40bit 重量化或精确输入 oracle 仍需单独定义后再设计实验",
+    "TP12：Y2 的 tokenizer 层重建误差检验仍列次优先（依赖最少）",
+    "维持约束：X-10 答复前不再新建跨模态玩具模型",
+    "X-03：拉通 Tushare stk_mins 多日 1min K 线后重跑 calibrate_noise_floor.py，输出按 (股票,日) 的 ω² 分布；再用 L2 快照设计纯 bounce ω 的 mid/micro-price 签名图；完成后解除 notation.md 冲突 1 冻结"
+  ],
+  "stop_reason": "完成 1 个吸收整合循环：deep A–F 全部落地并逐条消化→定理 C 独立复跑关闭 X-08→ω 首版标定+引用链（X-03 收窄待终判）→管道 v2 修复层（8 类偏差+T1–T9）→D1 adapter 修复→桥接 v0.1（五位证据机）→C-T9-003/TP13 草案→crosswalk 全行回填→R-1/R-3/R-4/R-7 卫生执行。可靠增量：理论-代码互证首次闭环（审计抓到并修掉真实 bug；桥接把 X-10 从研究变成填表）。仍开放：五位终判与 TP13 冻结（组）、A 股快照（2027-02-28 前）、L2 供给源、δ=0 三臂实验（训练线）。"
+}
