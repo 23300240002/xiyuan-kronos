@@ -306,3 +306,117 @@ pooled RankIC = +0.02513   n = 2,387,380   n_days = 4,815
 ### 已知局限
 test 取 85–100% 而 val 占 70–100%，两者重叠 → 早停间接看过 test 前 15%。
 彻底修法：val 收紧到 70–85% 后重训 9 个模型（9×40 分钟 GPU）。
+
+---
+
+# 交接（2026-10-26 00:40）
+
+## 一句话现状
+
+**P2 命题在 L2 通道上部分成立**：L2 订单簿单独可预测 1 小时收益（IC +0.0268，3/3 种子为正），
+但当前的交叉注意力融合会把增量破坏掉（融合臂比两个单模态都差）。
+GPU 队列正在跑 Rank 损失（Q1），后面还有 Q2–Q6 排着。
+
+## 1. 五条主线任务状态
+
+| # | 任务 | 状态 | 关键结果/位置 |
+|---|---|---|---|
+| 1 | Rank 损失 | 🔄 跑第 2 个（Q1） | arm-1 s0 val_IC +0.0368；**约 7 分钟/epoch，比 MSE 慢 2.5 倍** |
+| 2 | 混合损失 mse+rank | ⬜ 排队（Q2） | — |
+| 3 | 波动率任务（P4） | ⬜ 排队（Q3） | `xy/train/run_vol.py` 已写好并验证标签 |
+| 4 | 多频率 1min/15min | ⬜ 排队（Q4） | 张量已建好并上传（1min 1.9G / 15min 129M） |
+| 5 | kronos_base 三臂 | ⬜ 排队（Q5） | 权重已上传（391M，`KronosLocal/kronos_base/weights`） |
+| 6 | SDE 特征接入 | ⬜ 排队（Q6） | SDE 张量已建好并上传（6 维 / 18 维并联） |
+| 7 | **L2 三臂（额外）** | ✅ **完成** | `reports/07_L2三臂消融.md` |
+| 8 | M2 十八天 | ✅ 完成 | `reports/04_M2多日截面.md` |
+
+## 2. 三个重大发现（按重要性）
+
+### ① L2 订单簿单独有预测力（最干净的正面结果）
+
+短上下文 L=24/H=12，18 天按日切分 12/3/3，3 种子，测试段：
+
+| 臂 | 输入 | test IC ± std | 逐种子 |
+|---|---|---|---|
+| arm-1 | 仅 K 线 | +0.0033 ± 0.0096 | −0.009 / +0.003 / +0.015 |
+| **arm-2** | **仅 L2 订单簿 7 维** | **+0.0268 ± 0.0115** | **+0.043 / +0.018 / +0.020（全正）** |
+| arm-3 | 融合 | −0.0161 ± 0.0156 | +0.000 / −0.037 / −0.012 |
+
+与 M2 特征级发现互相印证：**imb1 增量 IC +0.0593（t=2.73，18 天，分层符号全正）**。
+
+### ② 当前 Fusion（交叉注意力）有害
+
+ΔIC(arm3−arm1) = −0.0194（2/3 负）；ΔIC(arm3−arm2) = −0.0429（3/3 负）。
+可能原因：L=24 短序列注意力噪声大、门控初值 0 + LN 在 12 天数据下不稳、两路尺度差异大。
+**已实现两种替代融合（见 §4），但还没上传服务器、也没跑。**
+
+### ③ 同架构换通道结论反转
+
+M1 成交流通道：arm-2 无信号（CI 跨 0）。L2 订单簿通道：arm-2 有强信号。
+→ **增量在订单簿状态，不在成交流水**。这解释了主三臂实验（M1）为什么是阴性。
+
+## 3. 本轮修的 6 个 bug（都值得记住）
+
+| # | Bug | 症状 | 修法 |
+|---|---|---|---|
+| 1 | `run_arm` 变量遮蔽 | `loss = loss_v` 覆盖字符串参数，rank 模式第 2 个 batch 起变 mix | 参数改名 `loss_type` |
+| 2 | `run_l2arm` 设备不匹配 | arm-2/3 一跑就崩（arm-1 因替换掉 mb 而幸免） | evaluate 用 `dev` 而非 `device` |
+| 3 | `sde` 时间键格式 | 输出 HHMM(930) 而 K 线侧用分钟数(570)，匹配率 0% | 改输出 `bucket` |
+| 4 | `m2_multi` OOM | 一次性读 14 万文件（90 亿单元格）被静默杀死 | 逐文件即时聚合 |
+| 5 | `l2_tensor` code 后缀 | `000001.SZ` vs 票池 `000001`，匹配 0 | `code.split(".")[0]` |
+| 6 | 服务器 5min meta 缺 times | `KeyError: 'times'` | 上传本地新版 meta |
+
+## 4. ⚠️ 只在本地、尚未上传的改动
+
+**`xy/train/run_arm.py` 已加三种融合模式，但服务器上还是旧版**：
+
+```python
+Fusion(mode="xattn")    # 原始交叉注意力（当前所有实验用的）
+Fusion(mode="concat")   # K线末点 + 微观均值拼接 → Head（无注意力，最稳）
+Fusion(mode="gate_res") # h + tanh(g)·W(m_mean)（标量门控残差）
+```
+
+- `Arm(..., fusion="concat")` 时 Head 输入维度自动翻倍（`d_out*3`）
+- **CLI 参数 `--fusion` 还没加**，`run_arm.main()` 也没传这个参数
+- 已完成语法检查，未做数值验证
+
+**下一步要做**：补 `--fusion` CLI → 本地小样本验证 → 上传 → 跑 L2 的 arm-3 concat 版（3 种子，约 15 分钟）
+
+## 5. 下一步优先级
+
+1. **修融合**（最高价值）：`--fusion concat` 跑 L2 arm-3，目标在 arm-2 的 +0.0268 之上拿正增量
+2. **扩 L2 天数**：18 天且分散是最大限制（lookback 被压在 24）。网盘还有 676 天可用，
+   下载脚本机制已跑通（`/tmp/dl_one.sh`，BaiduPCS-Go 已 patch，2.3MB/s，约 4GB/天）
+3. **Rank 损失降本**：7 分钟/epoch × 10 epoch × 12 个 run = 14 小时，太贵。
+   建议降到 `--epochs 6`，或只跑 arm-1/arm-3 各 2 个种子
+4. 中性化（市值/换手）——`daily_basic` 数据已拉，纯后处理，最便宜
+
+## 6. 操作手册
+
+```bash
+W=/share/home/tm884089579940000/a891264510/work1024
+SSH="ssh -S /tmp/gpu.sock -p 9002 root@47.107.102.231"
+
+# 看 GPU 队列阶段
+$SSH "strings $W/runs/gpu_master.log | grep -aE '^####|^--- ' | tail -5"
+
+# 看 L2 三臂结果
+$SSH "cd $W/code/v1 && $W/envs/v1/bin/python -c \"
+import json,glob,numpy as np
+r={}
+for f in sorted(glob.glob('runs/l2arm/arm*/result.json')):
+    d=json.load(open(f)); r.setdefault(d['arm'],[]).append(d['test']['ic'])
+for a,v in sorted(r.items()): print('arm-%d IC %+.5f (n=%d)'%(a,np.mean(v),len(v)))\""
+
+# 上传代码（注意：队列在跑时热替换会让后续 run 用新代码，命名可能不一致）
+cd "/Users/luolingli/Documents/work/项目/曦源-Kronos课题"
+tar --disable-copyfile -czf /tmp/xy.tgz v1/xy
+scp -P 9002 -o ControlPath=/tmp/gpu.sock -o ControlMaster=no /tmp/xy.tgz root@47.107.102.231:$W/
+$SSH "cd $W && tar xzf xy.tgz -C $W/code --overwrite"
+```
+
+**踩坑提醒**：
+- 本地长任务必须用工具的 `run_in_background`，`nohup &` 会被工具超时杀掉
+- 服务器长任务用 `setsid nohup ... & disown`
+- `tar czf - 相对路径` 解压会深一层，需 `mv` 归位
+- 目录名现在带 `{loss}_{micro}_{size}` 后缀，防覆盖
