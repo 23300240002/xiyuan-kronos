@@ -1,0 +1,26 @@
+# research/v1 的产物忽略规则
+# 数据与权重不进 git（体积大且含本地路径）；只保留代码、报告、结果 JSON
+
+# 原始数据
+raw/
+runs/panel/
+runs/tensor/
+
+# 模型权重
+*.pt
+*.pth
+*.ckpt
+
+# 大文件归档
+*.7z
+*.parquet
+*.npy
+
+# 本地环境与缓存
+__pycache__/
+*.pyc
+.DS_Store
+
+# 凭据（绝不入库）
+.secrets/
+gpu/
