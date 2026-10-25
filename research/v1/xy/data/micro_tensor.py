@@ -21,20 +21,41 @@ FEATURES = ["vol_imb", "ln_trades", "ln_avg_size", "ret", "path_eff",
             "vwap_dev", "amihud", "open_pos", "tail_pos", "big_ratio",
             "corr_pv", "hhi"]
 
+SDE_FEATURES = ["dsv", "usv", "bv", "jump_ratio", "rskew", "rkurt"]
 
-def build() -> None:
+SETS = {
+    "m1":    (["micro_m1_5min"], FEATURES),
+    "sde":   (["micro_sde_5min"], SDE_FEATURES),
+    "m1sde": (["micro_m1_5min", "micro_sde_5min"], FEATURES + SDE_FEATURES),
+}
+
+
+def build(feature_set: str = "m1") -> None:
+    srcs, feats = SETS[feature_set]
     k_meta = json.loads((RUNS / "tensor" / "5min" / "meta.json").read_text(encoding="utf-8"))
     codes = k_meta["codes"]
     times = k_meta["times"]                      # "YYYY-MM-DD_HHMM"
     ci = {c: i for i, c in enumerate(codes)}
     ti = {t: i for i, t in enumerate(times)}
 
-    d = pd.read_parquet(PANEL / "micro_m1_5min" / "all.parquet")
-    # 时间键：trade_date(YYYY-MM-DD) + "_" + bucket(HHMM)
-    d["tkey"] = d["trade_date"].astype(str) + "_" + d["bucket"].astype(int).astype(str).str.zfill(4)
-    d["code"] = d["code"].astype(str)
+    frames = []
+    for src in srcs:
+        d = pd.read_parquet(PANEL / src / "all.parquet")
+        # 时间键：trade_date(YYYY-MM-DD) + "_" + 分钟列(HHMM)
+        # micro_m1 输出列名是 bucket，sde 输出列名是 bar_time，统一兼容
+        tcol = "bar_time" if "bar_time" in d.columns else "bucket"
+        d["tkey"] = d["trade_date"].astype(str) + "_" + d[tcol].astype(int).astype(str).str.zfill(4)
+        d["code"] = d["code"].astype(str)
+        frames.append(d)
+    d = frames[0] if len(frames) == 1 else None
+    if d is None:                                 # 多源：按 (code, tkey) 合并
+        base = frames[0][["code", "tkey"]].copy()
+        for fr in frames:
+            base = base.merge(fr[["code", "tkey"] + [f for f in feats if f in fr.columns]],
+                              on=["code", "tkey"], how="left")
+        d = base
 
-    n_code, n_time, n_f = len(codes), len(times), len(FEATURES)
+    n_code, n_time, n_f = len(codes), len(times), len(feats)
     x = np.full((n_code, n_time, n_f), np.nan, dtype=np.float32)
 
     # 只保留两侧都有的 (code, time)
@@ -42,16 +63,16 @@ def build() -> None:
     dd = d[m]
     rows = dd["code"].map(ci).to_numpy()
     cols = dd["tkey"].map(ti).to_numpy()
-    for k, f in enumerate(FEATURES):
+    for k, f in enumerate(feats):
         x[rows, cols, k] = dd[f].to_numpy(dtype=np.float32)
 
-    out = RUNS / "tensor" / "micro_5min"
+    out = RUNS / "tensor" / f"micro_{feature_set}_5min"
     out.mkdir(parents=True, exist_ok=True)
     np.save(out / "x.npy", x)
     meta = {
-        "freq": "micro_5min",
+        "freq": f"micro_{feature_set}_5min",
         "shape": list(x.shape),
-        "features": FEATURES,
+        "features": feats,
         "n_code": n_code,
         "n_time": n_time,
         "aligned_with": "5min",
@@ -68,4 +89,8 @@ def build() -> None:
 
 
 if __name__ == "__main__":
-    build()
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--set", default="m1", choices=list(SETS))
+    a = ap.parse_args()
+    build(a.set)

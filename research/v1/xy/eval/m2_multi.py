@@ -27,23 +27,27 @@ CTRL = "ret_today"
 
 
 def load_all(parsed: str) -> pd.DataFrame:
+    """逐文件读取并**立即聚合**到 票-日 汇总，再拼接。
+
+    18 天 × 约 7000 票 = 12.6 万个文件，若全部读入内存约 90 亿单元格，
+    会触发容器 OOM（进程被静默杀死）。每个文件只贡献一行汇总，内存恒定。
+    """
     files = sorted(glob.glob(os.path.join(parsed, "*.parquet")))
     if not files:
         raise FileNotFoundError(parsed)
     parts = []
-    for f in files:
+    for i, f in enumerate(files, 1):
         d = pd.read_parquet(f)
         if len(d) == 0:
             continue
-        # 连续竞价（当日秒数）
         t = d["t"]
         d = d[((t >= 34200) & (t <= 41400)) | ((t >= 46800) & (t <= 54000))]
         if len(d) == 0:
             continue
-        parts.append(d)
+        parts.append(daily_agg(d))
+        if i % 5000 == 0:
+            print(f"  [m2] 已处理 {i:,}/{len(files):,} 个文件", flush=True)
     df = pd.concat(parts, ignore_index=True)
-    df["date"] = df["code"].astype(str) + "|" + df["path_date"].astype(str) \
-        if "path_date" in df else df["code"].astype(str)
     return df
 
 
@@ -77,12 +81,12 @@ def main() -> None:
     L = ["# M2 · L2 盘口多日截面分析\n",
          "> 逐日算截面 RankIC，再跨日汇总；按行情体制分层；每个特征给原始 IC 与增量 IC。\n"]
 
-    print("读取盘口特征 ...", flush=True)
-    d = load_all(a.parsed)
-    print(f"快照 {len(d):,}  票 {d.code.nunique():,}  日 {d.path_date.nunique()}")
-    L.append(f"- 快照 **{len(d):,}**，票 {d.code.nunique():,}，日 **{d.path_date.nunique()}**\n")
+    print("读取盘口特征并逐文件聚合 ...", flush=True)
+    daily = load_all(a.parsed)          # 已是 票-日 汇总（逐文件聚合，防 OOM）
+    print(f"票-日 {len(daily):,}  票 {daily.code.nunique():,}  日 {daily.path_date.nunique()}")
+    L.append(f"- 票-日 **{len(daily):,}**，票 {daily.code.nunique():,}，"
+             f"日 **{daily.path_date.nunique()}**\n")
 
-    daily = daily_agg(d)
     daily = daily[daily.n_snap >= a.min_snap]
     # 统一日期格式：path_date 来自文件名（YYYYMMDD），面板是 YYYY-MM-DD
     daily["path_date"] = pd.to_datetime(daily["path_date"], format="%Y%m%d").dt.strftime("%Y-%m-%d")

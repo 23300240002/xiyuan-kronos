@@ -61,34 +61,66 @@ class MicroEncoder(nn.Module):
 
 
 class Fusion(nn.Module):
-    """σ 尺度门控 + 交叉注意力（K 线 query，微观 key/value）。"""
+    """两路合并，三种模式（L2 实验证明 xattn 在短上下文+小数据下有害）：
 
-    def __init__(self, d_k: int = 512, d_m: int = 128, n_heads: int = 4):
+    xattn     σ 门控交叉注意力（原始实现，K 线 query / 微观 key-value）
+    concat    取 K 线末点 token 与微观序列的均值池化拼接（无注意力，最稳）
+    gate_res  h + tanh(g)·W(m_mean)（标量门控残差，无注意力）
+    """
+
+    def __init__(self, d_k: int = 512, d_m: int = 128, n_heads: int = 4,
+                 mode: str = "xattn"):
         super().__init__()
-        self.q = nn.Linear(d_k, d_k)
-        self.kv = nn.Linear(d_m, d_k)
-        self.attn = nn.MultiheadAttention(d_k, n_heads, batch_first=True, dropout=0.1)
-        self.gate = nn.Parameter(torch.zeros(1))     # 初值 0 ⇒ 第 0 步恒等 arm-1
-        self.ln = nn.LayerNorm(d_k)
+        self.mode = mode
+        self.d_k = d_k
+        if mode == "xattn":
+            self.q = nn.Linear(d_k, d_k)
+            self.kv = nn.Linear(d_m, d_k)
+            self.attn = nn.MultiheadAttention(
+                d_k, n_heads, batch_first=True, dropout=0.1)
+            self.gate = nn.Parameter(torch.zeros(1))
+            self.ln = nn.LayerNorm(d_k)
+        elif mode == "concat":
+            self.proj_m = nn.Linear(d_m, d_k)
+            self.ln = nn.LayerNorm(d_k * 2)
+        elif mode == "gate_res":
+            self.proj_m = nn.Linear(d_m, d_k)
+            self.gate = nn.Parameter(torch.zeros(1))
+            self.ln = nn.LayerNorm(d_k)
+        else:
+            raise ValueError(mode)
 
     def forward(self, h, m):
-        q = self.q(h)
-        kv = self.kv(m)
-        a, _ = self.attn(q, kv, kv, need_weights=False)
-        return self.ln(h + torch.tanh(self.gate) * a)
+        if self.mode == "xattn":
+            q = self.q(h)
+            kv = self.kv(m)
+            a, _ = self.attn(q, kv, kv, need_weights=False)
+            return self.ln(h + torch.tanh(self.gate) * a)
+        m_pool = self.proj_m(m.mean(dim=1))           # [B, d_k]
+        if self.mode == "concat":
+            return self.ln(torch.cat([h[:, -1], m_pool], dim=-1))   # [B, 2*d_k]
+        # gate_res
+        return self.ln(h + torch.tanh(self.gate) * m_pool.unsqueeze(1))
 
 
 class Arm(nn.Module):
     def __init__(self, arm: int, d_model: int = 512, horizon: int = 5,
                  n_micro: int = 12, n_micro_tok: int = 60,
-                 head_hidden: int = 256, dropout: float = 0.1):
+                 head_hidden: int = 256, dropout: float = 0.1,
+                 fusion: str = "xattn"):
         super().__init__()
         self.arm = arm
         self.n_micro = n_micro
+        self.fusion_mode = fusion
         self.null_k = nn.Parameter(torch.zeros(1, 1, d_model))
         self.null_m = nn.Parameter(torch.zeros(1, 1, n_micro))   # 与微观特征同维，过编码器
-        self.fusion = Fusion(d_model, 128)
-        self.head = Head(d_model * 3, head_hidden, horizon, dropout)
+        self.fusion = Fusion(d_model, 128, mode=fusion)
+        # concat 模式融合结果是一个 [B, 2*d_model] 向量（无时间维），Head 直接吃它；
+        # 其余模式保留时间维，用「末点+尾部均值+尾部标准差」三拼
+        if fusion == "concat":
+            self.head = Head(d_model * 2, head_hidden, horizon, dropout)
+        else:
+            self.head = Head(d_model * 3, head_hidden, horizon, dropout)
         # 三臂都建编码器：arm-1 让 NULL token 过编码器，保证参数量与 arm-2/3 完全相同
         self.micro_enc = MicroEncoder(n_micro)
 
@@ -106,10 +138,28 @@ class Arm(nn.Module):
         m = self.micro_enc(m)
         fused = self.fusion(h, m)
 
+        if self.fusion_mode == "concat":
+            return self.head(fused)          # fused: [B, 2*d_model]
+
         last = fused[:, -1]
         tail = fused[:, -60:]
         feat = torch.cat([last, tail.mean(1), tail.std(1)], dim=-1)
         return self.head(feat)
+
+
+def rank_loss(pred: torch.Tensor, true: torch.Tensor) -> torch.Tensor:
+    """RankNet 式 pairwise 损失（batch 内两两比较）。
+
+    pred/true: [B]（已取末点）。对每对 (i,j)：
+        s_ij = sign(r_i - r_j)，损失 log(1 + exp(-(p_i - p_j) * s_ij))
+    直接优化排序，与 RankIC 口径一致；MSE 则被少数大涨跌主导。
+    """
+    p = pred.unsqueeze(0) - pred.unsqueeze(1)          # [B,B]
+    r = true.unsqueeze(0) - true.unsqueeze(1)
+    s = torch.sign(r)
+    mask = (s != 0).float()
+    loss = torch.nn.functional.logsigmoid(p * s) * mask
+    return -loss.sum() / mask.sum().clamp(min=1.0)
 
 
 # ------------------------------------------------------------------ 数据
@@ -128,14 +178,17 @@ def load_tensor(freq: str):
     return x, meta
 
 
-def load_micro(freq: str):
-    """载入与 K 线对齐的微观张量；freq=daily 时返回 None。"""
-    key = "micro_5min" if freq == "5min" else None
+def load_micro(freq: str, feature_set: str = "m1"):
+    """载入与 K 线对齐的微观张量；freq=daily 时返回 None。
+
+    feature_set: m1（12 维成交流）/ sde（6 维波动率族）/ m1sde（18 维并联）
+    """
+    key = f"micro_{feature_set}_5min" if freq == "5min" else None
     if key is None:
         return None, None
     d = RUNS / "tensor" / key
     if not (d / "x.npy").exists():
-        raise FileNotFoundError(f"缺少微观张量 {d}，先跑 xy.data.micro_tensor")
+        raise FileNotFoundError(f"缺少微观张量 {d}，先跑 xy.data.micro_tensor --set {feature_set}")
     x = np.load(d / "x.npy", mmap_mode="r")
     meta = json.loads((d / "meta.json").read_text(encoding="utf-8"))
     assert meta["n_code"] == json.loads((RUNS / "tensor" / freq / "meta.json").read_text())["n_code"], \
@@ -158,16 +211,19 @@ def sample_windows(meta, lookback: int, horizon: int, stride: int, lo: str, hi: 
 def run(arm: int, freq: str, epochs: int, seed: int, device: str,
         lookback: int, horizon: int, batch: int, lr: float,
         head_hidden: int = 256, dropout: float = 0.1, wd: float = 0.01,
-        stride: int = 5) -> dict:
+        stride: int = 5, loss_type: str = "mse", lam: float = 1.0,
+        micro: str = "m1", size: str = "small", fusion: str = "xattn") -> dict:
     torch.manual_seed(seed)
     np.random.seed(seed)
 
     x, meta = load_tensor(freq)
-    xm, mmeta = load_micro(freq)
-    backbone = FrozenKronos(size="small", device=device)
+    xm, mmeta = load_micro(freq, micro)
+    backbone = FrozenKronos(size=size, device=device)
     device = str(backbone.device)          # 以主干实际落地的设备为准
-    model = Arm(arm, d_model=backbone.d_model, horizon=horizon,
-                head_hidden=head_hidden, dropout=dropout).to(device)
+    # daily 频段没有微观张量，用默认 12 维占位（NULL_M 路径仍可跑）
+    n_micro = int(mmeta["shape"][2]) if xm is not None else 12
+    model = Arm(arm, d_model=backbone.d_model, horizon=horizon, n_micro=n_micro,
+                head_hidden=head_hidden, dropout=dropout, fusion=fusion).to(device)
     print(f"[arm{arm}] device={device}")
 
     n_code, n_time = meta["n_code"], meta["n_time"]
@@ -227,7 +283,13 @@ def run(arm: int, freq: str, epochs: int, seed: int, device: str,
             with torch.no_grad():
                 h = backbone.hidden(xb)
             pred = model(h, mb)
-            loss = F.mse_loss(pred[:, -1], yb)
+            pl = pred[:, -1]
+            if loss_type == "mse":
+                loss = F.mse_loss(pl, yb)
+            elif loss_type == "rank":
+                loss = rank_loss(pl, yb)
+            else:                                   # mse+rank 混合
+                loss = F.mse_loss(pl, yb) + lam * rank_loss(pl, yb)
             opt.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(
@@ -269,8 +331,9 @@ def run(arm: int, freq: str, epochs: int, seed: int, device: str,
 
     if best_state is not None:
         model.load_state_dict(best_state)
-        (RUNS / "arm" / f"arm{arm}_{freq}_s{seed}").mkdir(parents=True, exist_ok=True)
-        torch.save(best_state, RUNS / "arm" / f"arm{arm}_{freq}_s{seed}" / "best_state.pt")
+        sd = RUNS / "arm" / f"arm{arm}_{freq}_s{seed}_h{head_hidden}_d{dropout}_w{wd}_{loss_type}_{micro}_{size}_{fusion}"
+        sd.mkdir(parents=True, exist_ok=True)
+        torch.save(best_state, sd / "best_state.pt")
 
     out = {
         "arm": arm, "freq": freq, "seed": seed, "epochs": epochs,
@@ -279,8 +342,9 @@ def run(arm: int, freq: str, epochs: int, seed: int, device: str,
         "n_train": len(train_idx), "n_val": len(val_idx),
         "n_params": int(sum(p.numel() for p in model.parameters() if p.requires_grad)),
         "head_hidden": head_hidden, "dropout": dropout, "wd": wd, "stride": stride,
+        "loss": loss_type, "lam": lam, "micro": micro, "size": size, "fusion": fusion,
     }
-    d = RUNS / "arm" / f"arm{arm}_{freq}_s{seed}_h{head_hidden}_d{dropout}_w{wd}"
+    d = RUNS / "arm" / f"arm{arm}_{freq}_s{seed}_h{head_hidden}_d{dropout}_w{wd}_{loss_type}_{micro}_{size}_{fusion}"
     d.mkdir(parents=True, exist_ok=True)
     (d / "result.json").write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"[arm{arm}] -> {d}/result.json")
@@ -302,13 +366,22 @@ def main() -> None:
     ap.add_argument("--dropout", type=float, default=0.1)
     ap.add_argument("--wd", type=float, default=0.01)
     ap.add_argument("--stride", type=int, default=5)
+    ap.add_argument("--loss", default="mse", choices=["mse", "rank", "mix"])
+    ap.add_argument("--lam", type=float, default=1.0)
+    ap.add_argument("--micro", default="m1", choices=["m1", "sde", "m1sde"],
+                    help="微观特征集：m1=成交流12维 / sde=波动率族6维 / m1sde=18维并联")
+    ap.add_argument("--size", default="small", choices=["small", "base"],
+                    help="Kronos 主干：small=24.7M / base=102M")
+    ap.add_argument("--fusion", default="xattn", choices=["xattn", "concat", "gate_res"],
+                    help="两路合并方式：xattn=交叉注意力 / concat=拼接 / gate_res=门控残差")
     a = ap.parse_args()
 
     lb = a.lookback or (128 if a.freq == "daily" else 480)
     hz = a.horizon or (5 if a.freq == "daily" else 48)
     for s in a.seeds:
         run(a.arm, a.freq, a.epochs, s, a.device, lb, hz, a.batch, a.lr,
-            a.head_hidden, a.dropout, a.wd, a.stride)
+            a.head_hidden, a.dropout, a.wd, a.stride, a.loss, a.lam, a.micro,
+            a.size, a.fusion)
 
 
 if __name__ == "__main__":

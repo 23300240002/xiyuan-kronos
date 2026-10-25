@@ -131,19 +131,33 @@ def evaluate(arm: int, freq: str, seed: int, device, B: int, tag: str,
              batch: int = 512) -> dict:
     import torch
 
-    src = RUNS / "arm" / f"arm{arm}_{freq}_s{seed}"
-    state_path = src / "best_state.pt"
-    res_path = RUNS / "arm" / f"arm{arm}_{freq}_s{seed}_h64_d0.3_w0.1" / "result.json"
-    if not state_path.exists() or not res_path.exists():
-        raise FileNotFoundError(f"缺少 {state_path} 或 {res_path}")
+    # 目录名带全部超参后缀（loss_micro_size），用 glob 匹配；旧命名也兼容
+    cands = sorted((RUNS / "arm").glob(f"arm{arm}_{freq}_s{seed}_*"))
+    res_path = next((c / "result.json" for c in cands
+                     if (c / "result.json").exists()), None)
+    if res_path is None:                      # 旧命名：无超参后缀
+        alt = RUNS / "arm" / f"arm{arm}_{freq}_s{seed}_h64_d0.3_w0.1" / "result.json"
+        res_path = alt if alt.exists() else None
+    if res_path is None:
+        raise FileNotFoundError(f"缺少 result.json（arm={arm} seed={seed}）")
+    state_path = res_path.parent / "best_state.pt"
+    if not state_path.exists():
+        alt_s = RUNS / "arm" / f"arm{arm}_{freq}_s{seed}" / "best_state.pt"
+        if alt_s.exists():
+            state_path = alt_s
+        else:
+            raise FileNotFoundError(f"缺少 best_state.pt（{res_path.parent}）")
     meta_run = json.loads(res_path.read_text(encoding="utf-8"))
     lookback, horizon = meta_run["lookback"], meta_run["horizon"]
 
     x, meta = load_tensor(freq)
-    xm, _ = load_micro(freq)
-    backbone = FrozenKronos(size="small", device=device)
+    size = meta_run.get("size", "small")
+    micro = meta_run.get("micro", "m1")
+    xm, mmeta = load_micro(freq, micro)
+    backbone = FrozenKronos(size=size, device=device)
     device = str(backbone.device)
-    model = Arm(arm, d_model=backbone.d_model, horizon=horizon,
+    n_micro = int(mmeta["shape"][2]) if xm is not None else 12
+    model = Arm(arm, d_model=backbone.d_model, horizon=horizon, n_micro=n_micro,
                 head_hidden=meta_run["head_hidden"],
                 dropout=meta_run["dropout"]).to(device)
     model.load_state_dict(torch.load(state_path, map_location=device))
@@ -165,9 +179,10 @@ def evaluate(arm: int, freq: str, seed: int, device, B: int, tag: str,
         "n_test": int(len(p)), "n_days": int(len(np.unique(day))),
         "pooled_ic": ic, "ci_lo": lo, "ci_hi": hi, "t_block": t_blk,
         "pooled_rank_ic": ric, "test_frac": [0.85, 1.0],
+        "size": size, "micro": micro, "loss": meta_run.get("loss", "mse"),
         "note": "test 与 val(70-100%) 有重叠，属已知局限",
     }
-    d = RUNS / "arm" / f"arm{arm}_{freq}_s{seed}_h{meta_run['head_hidden']}_d{meta_run['dropout']}_w{meta_run['wd']}"
+    d = res_path.parent
     (d / f"test_{tag}.json").write_text(json.dumps(out, ensure_ascii=False, indent=1),
                                         encoding="utf-8")
     print(f"[arm{arm} s{seed}] pooled_IC={ic:+.5f} [{lo:+.5f},{hi:+.5f}] "

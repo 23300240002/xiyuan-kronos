@@ -47,7 +47,8 @@ def build(freq: str = "daily") -> None:
         df = pd.read_parquet(src, columns=["code", time_col, *CHANNELS])
         df[time_col] = df[time_col].astype(str)
     else:
-        src = PANEL / "minute_5min" / "all.parquet"
+        # 按频段选面板：5min→minute_5min，1min→minute_1min，15min→minute_15min
+        src = PANEL / f"minute_{freq}" / "all.parquet"
         time_col = "bucket"
         df = pd.read_parquet(src, columns=["code", "trade_date", time_col, *CHANNELS])
         # 时间键 = 日期 + 桶，保证跨日连续
@@ -111,7 +112,7 @@ class WindowIndex:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--freq", default="daily", choices=["daily", "5min"])
+    ap.add_argument("--freq", default="daily", choices=["daily", "5min", "1min", "15min"])
     a = ap.parse_args()
     build(a.freq)
 

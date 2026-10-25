@@ -366,9 +366,13 @@ M1 成交流通道：arm-2 无信号（CI 跨 0）。L2 订单簿通道：arm-2 
 | 5 | `l2_tensor` code 后缀 | `000001.SZ` vs 票池 `000001`，匹配 0 | `code.split(".")[0]` |
 | 6 | 服务器 5min meta 缺 times | `KeyError: 'times'` | 上传本地新版 meta |
 
-## 4. ⚠️ 只在本地、尚未上传的改动
+## 4. ✅ 融合三模式已实现、验证并上传（01:00 更新）
 
-**`xy/train/run_arm.py` 已加三种融合模式，但服务器上还是旧版**：
+**`run_arm.py` 与 `run_l2arm.py` 都已支持 `--fusion {xattn,concat,gate_res}`**，
+服务器已同步，L2 对比实验已跑完（结果见 `07_L2三臂消融.md` §7）：
+concat IC +0.0022（vs xattn −0.0161），方差降 58%，但仍不超 arm-2 的 +0.0268。
+
+三种模式的实现：
 
 ```python
 Fusion(mode="xattn")    # 原始交叉注意力（当前所有实验用的）
@@ -376,11 +380,10 @@ Fusion(mode="concat")   # K线末点 + 微观均值拼接 → Head（无注意�
 Fusion(mode="gate_res") # h + tanh(g)·W(m_mean)（标量门控残差）
 ```
 
-- `Arm(..., fusion="concat")` 时 Head 输入维度自动翻倍（`d_out*3`）
-- **CLI 参数 `--fusion` 还没加**，`run_arm.main()` 也没传这个参数
-- 已完成语法检查，未做数值验证
-
-**下一步要做**：补 `--fusion` CLI → 本地小样本验证 → 上传 → 跑 L2 的 arm-3 concat 版（3 种子，约 15 分钟）
+- `concat` 输出 `[B, 2*d_model]` 向量，Head 直接吃（不做时间池化）
+- `xattn` / `gate_res` 保留时间维，用「末点 + 尾部均值 + 尾部标准差」三拼
+- 三种模式 × 三臂共 9 种组合已通过形状与梯度验证（0.53M–1.88M 参数）
+- 目录名后缀现为 `{loss}_{micro}_{size}_{fusion}`
 
 ## 5. 下一步优先级
 

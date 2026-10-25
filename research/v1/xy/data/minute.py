@@ -105,7 +105,7 @@ def build(freq: int = 5, topn: int = 500, start: str = "2024-01-01", end: str = 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--freq", type=int, default=5, choices=[1, 5])
+    ap.add_argument("--freq", type=int, default=5, choices=[1, 5, 15])
     ap.add_argument("--topn", type=int, default=500)
     ap.add_argument("--start", default="2024-01-01")
     ap.add_argument("--end", default="2026-12-31")
