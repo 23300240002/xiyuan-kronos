@@ -1,0 +1,45 @@
+{
+ "model": "xsec_attention",
+ "seed": 2,
+ "lookback": 240,
+ "horizon": 24,
+ "stride": 80,
+ "d_hidden": 256,
+ "n_heads": 4,
+ "residual": true,
+ "label": "xsec_z",
+ "best_val_ic": 0.0384727461746323,
+ "history": [
+  {
+   "epoch": 0,
+   "train_loss": 0.9995882442775166,
+   "val_ic": 0.0384727461746323,
+   "sec": 4.5
+  },
+  {
+   "epoch": 1,
+   "train_loss": 0.9949264317003202,
+   "val_ic": 0.02877243632506595,
+   "sec": 4.5
+  },
+  {
+   "epoch": 2,
+   "train_loss": 0.9926403795091909,
+   "val_ic": 0.026644321645730048,
+   "sec": 4.8
+  },
+  {
+   "epoch": 3,
+   "train_loss": 0.9930319157979821,
+   "val_ic": 0.029152717528158574,
+   "sec": 4.7
+  }
+ ],
+ "test_ic": 0.032814767211675644,
+ "test_rank_ic": 0.033716381233959876,
+ "test_daily_ic_mean": 0.03362544865698756,
+ "test_daily_ic_std": 0.20564759752192582,
+ "n_test": 477476,
+ "n_test_days": 963,
+ "n_params": 1200257
+}

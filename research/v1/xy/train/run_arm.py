@@ -196,6 +196,32 @@ def load_micro(freq: str, feature_set: str = "m1"):
     return x, meta
 
 
+def xsec_label(x: np.ndarray, horizon: int) -> np.ndarray:
+    """截面 z-score 标签（MASTER, AAAI-24）。
+
+    对每个时间点 t，把未来 horizon 根收益在**所有票之间**做 z-score：
+        y[c,t] = (r_fwd[c,t] − mean_c(r_fwd[:,t])) / std_c(r_fwd[:,t])
+
+    为什么这么做（本项目的实测依据）：
+    - 我们的指标是截面 RankIC，但原来用原始收益做标签，被少数大涨跌主导
+      → arm-1 的 RankIC(+0.060) 是 IC(+0.003) 的 18 倍，说明模型学到了排序、
+        但幅度被噪声吃掉；
+    - 截面标准化把标签变成"相对强弱"，与 RankIC 口径直接对齐；
+    - 同时天然做了市场 beta 剔除（每个 t 减去全市场均值）。
+
+    返回 [n_code, n_time]，未来不足 horizon 的位置为 NaN。
+    """
+    close = np.asarray(x[:, :, 3], dtype=np.float32)
+    n_code, n_time = close.shape
+    fut = np.full((n_code, n_time), np.nan, dtype=np.float32)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        fut[:, :n_time - horizon] = (close[:, horizon:] /
+                                     close[:, :n_time - horizon] - 1)
+    mu = np.nanmean(fut, axis=0, keepdims=True)
+    sd = np.nanstd(fut, axis=0, keepdims=True)
+    return (fut - mu) / (sd + 1e-8)
+
+
 def sample_windows(meta, lookback: int, horizon: int, stride: int, lo: str, hi: str):
     """返回 [(code_idx, t_idx, date_str)]，只保留上下文与标签都完整的窗口。"""
     times = meta["times"] if "times" in meta else None
@@ -212,7 +238,8 @@ def run(arm: int, freq: str, epochs: int, seed: int, device: str,
         lookback: int, horizon: int, batch: int, lr: float,
         head_hidden: int = 256, dropout: float = 0.1, wd: float = 0.01,
         stride: int = 5, loss_type: str = "mse", lam: float = 1.0,
-        micro: str = "m1", size: str = "small", fusion: str = "xattn") -> dict:
+        micro: str = "m1", size: str = "small", fusion: str = "xattn",
+        label: str = "raw") -> dict:
     torch.manual_seed(seed)
     np.random.seed(seed)
 
@@ -238,6 +265,11 @@ def run(arm: int, freq: str, epochs: int, seed: int, device: str,
     opt = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad],
                             lr=lr, weight_decay=wd)
 
+    yz = xsec_label(x, horizon) if label == "xsec_z" else None
+    if yz is not None:
+        print(f"[arm] 标签=截面 z-score（MASTER 口径），有效值 "
+              f"{np.isfinite(yz).mean():.1%}", flush=True)
+
     def make_batch(idx):
         xs, ms, ys = [], [], []
         for c, t in idx:
@@ -254,7 +286,13 @@ def run(arm: int, freq: str, epochs: int, seed: int, device: str,
                 if not np.isfinite(mwin).all():
                     continue          # 必须在 append 之前剔除，否则 xs/ms 长度不一致
             xs.append(win)
-            ys.append(close_fut / close_now - 1)
+            if yz is not None:
+                z = float(yz[c, t])
+                if not np.isfinite(z):
+                    continue
+                ys.append(z)
+            else:
+                ys.append(close_fut / close_now - 1)
             if mwin is not None:
                 ms.append(mwin)
         if not xs:
@@ -331,7 +369,7 @@ def run(arm: int, freq: str, epochs: int, seed: int, device: str,
 
     if best_state is not None:
         model.load_state_dict(best_state)
-        sd = RUNS / "arm" / f"arm{arm}_{freq}_s{seed}_h{head_hidden}_d{dropout}_w{wd}_{loss_type}_{micro}_{size}_{fusion}"
+        sd = RUNS / "arm" / f"arm{arm}_{freq}_s{seed}_h{head_hidden}_d{dropout}_w{wd}_{loss_type}_{micro}_{size}_{fusion}_{label}"
         sd.mkdir(parents=True, exist_ok=True)
         torch.save(best_state, sd / "best_state.pt")
 
@@ -343,8 +381,9 @@ def run(arm: int, freq: str, epochs: int, seed: int, device: str,
         "n_params": int(sum(p.numel() for p in model.parameters() if p.requires_grad)),
         "head_hidden": head_hidden, "dropout": dropout, "wd": wd, "stride": stride,
         "loss": loss_type, "lam": lam, "micro": micro, "size": size, "fusion": fusion,
+        "label": label,
     }
-    d = RUNS / "arm" / f"arm{arm}_{freq}_s{seed}_h{head_hidden}_d{dropout}_w{wd}_{loss_type}_{micro}_{size}_{fusion}"
+    d = RUNS / "arm" / f"arm{arm}_{freq}_s{seed}_h{head_hidden}_d{dropout}_w{wd}_{loss_type}_{micro}_{size}_{fusion}_{label}"
     d.mkdir(parents=True, exist_ok=True)
     (d / "result.json").write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"[arm{arm}] -> {d}/result.json")
@@ -374,6 +413,8 @@ def main() -> None:
                     help="Kronos 主干：small=24.7M / base=102M")
     ap.add_argument("--fusion", default="xattn", choices=["xattn", "concat", "gate_res"],
                     help="两路合并方式：xattn=交叉注意力 / concat=拼接 / gate_res=门控残差")
+    ap.add_argument("--label", default="raw", choices=["raw", "xsec_z"],
+                    help="标签口径：raw=原始未来收益 / xsec_z=截面 z-score（MASTER 做法，对齐 RankIC）")
     a = ap.parse_args()
 
     lb = a.lookback or (128 if a.freq == "daily" else 480)
@@ -381,7 +422,7 @@ def main() -> None:
     for s in a.seeds:
         run(a.arm, a.freq, a.epochs, s, a.device, lb, hz, a.batch, a.lr,
             a.head_hidden, a.dropout, a.wd, a.stride, a.loss, a.lam, a.micro,
-            a.size, a.fusion)
+            a.size, a.fusion, a.label)
 
 
 if __name__ == "__main__":
