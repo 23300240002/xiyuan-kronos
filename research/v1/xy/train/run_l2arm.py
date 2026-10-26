@@ -238,7 +238,9 @@ def main() -> None:
     ap.add_argument("--wd", type=float, default=0.1)
     ap.add_argument("--stride", type=int, default=1)
     ap.add_argument("--epochs", type=int, default=15)
-    ap.add_argument("--fusion", default="xattn", choices=["xattn", "concat", "gate_res"])
+    ap.add_argument("--fusion", default="xattn",
+                    choices=["xattn", "concat", "gate_res", "gmu", "film", "moe2",
+                             "late_ens"])
     a = ap.parse_args()
     for arm in a.arm:
         run(arm, a.seeds, a.device, a.lookback, a.horizon, a.batch, a.lr,

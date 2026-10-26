@@ -87,6 +87,25 @@ class Fusion(nn.Module):
             self.proj_m = nn.Linear(d_m, d_k)
             self.gate = nn.Parameter(torch.zeros(1))
             self.ln = nn.LayerNorm(d_k)
+        elif mode == "gmu":
+            # GMU（ICLR-17）：逐时刻的凸组合，让模型自己决定信谁
+            self.wz = nn.Linear(d_k + d_m, 1)
+            self.wh = nn.Linear(d_k, d_k)
+            self.wm = nn.Linear(d_m, d_k)
+            self.ln = nn.LayerNorm(d_k)
+        elif mode == "film":
+            # FiLM：用微观序列逐时刻调制 K 线表示（γ,β 由微观特征生成）
+            self.film = nn.Linear(d_m, d_k * 2)
+            self.ln = nn.LayerNorm(d_k)
+        elif mode == "moe2":
+            # 两专家 + 软路由：模态不平衡下让梯度分流，避免一方主导
+            self.router = nn.Linear(d_k + d_m, 2)
+            self.exp_k = nn.Linear(d_k, d_k)
+            self.exp_m = nn.Linear(d_m, d_k)
+            self.ln = nn.LayerNorm(d_k)
+        elif mode == "late_ens":
+            # 晚期融合：两路各自独立预测，再平均。**结构上不可能破坏任一路**
+            self.ln = nn.LayerNorm(d_k)
         else:
             raise ValueError(mode)
 
@@ -96,6 +115,22 @@ class Fusion(nn.Module):
             kv = self.kv(m)
             a, _ = self.attn(q, kv, kv, need_weights=False)
             return self.ln(h + torch.tanh(self.gate) * a)
+        # 微观编码器输出单 token [B,1,d]；逐时刻融合需广播到时间维
+        if self.mode in ("gmu", "film", "moe2"):
+            m = m.expand(-1, h.shape[1], -1)
+        if self.mode == "gmu":
+            # 逐时刻：z = σ(W_z[h_t, m_t])，out = z⊙tanh(W_h h_t) + (1−z)⊙tanh(W_m m_t)
+            z = torch.sigmoid(self.wz(torch.cat([h, m], dim=-1)))       # [B,T,1]
+            return self.ln(z * torch.tanh(self.wh(h)) +
+                           (1 - z) * torch.tanh(self.wm(m)))
+        if self.mode == "film":
+            gamma, beta = self.film(m).chunk(2, dim=-1)                 # [B,T,d]
+            return self.ln((1 + gamma) * h + beta)
+        if self.mode == "moe2":
+            w = torch.softmax(self.router(torch.cat([h, m], dim=-1)), dim=-1)
+            return self.ln(w[..., :1] * self.exp_k(h) + w[..., 1:] * self.exp_m(m))
+        if self.mode == "late_ens":
+            return h                                                # 两路各自走独立头
         m_pool = self.proj_m(m.mean(dim=1))           # [B, d_k]
         if self.mode == "concat":
             return self.ln(torch.cat([h[:, -1], m_pool], dim=-1))   # [B, 2*d_k]
@@ -119,6 +154,12 @@ class Arm(nn.Module):
         # 其余模式保留时间维，用「末点+尾部均值+尾部标准差」三拼
         if fusion == "concat":
             self.head = Head(d_model * 2, head_hidden, horizon, dropout)
+        elif fusion == "late_ens":
+            # 晚期融合：两路各自独立预测再平均，结构上不可能破坏任一路
+            self.head_k = Head(d_model * 3, head_hidden, horizon, dropout)
+            self.head_m = Head(d_model * 3, head_hidden, horizon, dropout)
+            self.proj_m2k = nn.Linear(128, d_model)   # 微观 token(128) 升到 d_model
+            self.head = None
         else:
             self.head = Head(d_model * 3, head_hidden, horizon, dropout)
         # 三臂都建编码器：arm-1 让 NULL token 过编码器，保证参数量与 arm-2/3 完全相同
@@ -135,8 +176,27 @@ class Arm(nn.Module):
             if m is None:
                 raise ValueError("arm-3 需要真实微观输入；m=None 会静默退化成 arm-1")
 
-        m = self.micro_enc(m)
-        fused = self.fusion(h, m)
+        m_enc = self.micro_enc(m)
+
+        if self.fusion_mode == "late_ens":
+            def pool(x):
+                return torch.cat([x[:, -1], x[:, -60:].mean(1), x[:, -60:].std(1)],
+                                 dim=-1)
+            if self.arm == 1:
+                return self.head_k(pool(h))
+            m_up = self.proj_m2k(m_enc)              # [B,1,d_model]
+            # 微观侧只有 1 个 token，pool 里的 std 恒为 0（甚至 NaN）→ 用零填充占位，
+            # 保持维度与 head 一致，但语义上明确"没有序列方差信息"
+            if self.arm == 2:
+                z = torch.cat([m_up[:, 0], m_up[:, 0], torch.zeros_like(m_up[:, 0])],
+                              dim=-1)
+                return self.head_m(z)
+            # arm-3：两路平均（等权；也可学权重，但等权更不容易过拟合）
+            z = torch.cat([m_up[:, 0], m_up[:, 0], torch.zeros_like(m_up[:, 0])],
+                          dim=-1)
+            return 0.5 * (self.head_k(pool(h)) + self.head_m(z))
+
+        fused = self.fusion(h, m_enc)
 
         if self.fusion_mode == "concat":
             return self.head(fused)          # fused: [B, 2*d_model]
@@ -412,7 +472,9 @@ def main() -> None:
                     help="微观特征集：m1=成交流12维 / sde=波动率族6维 / m1sde=18维并联")
     ap.add_argument("--size", default="small", choices=["small", "base"],
                     help="Kronos 主干：small=24.7M / base=102M")
-    ap.add_argument("--fusion", default="xattn", choices=["xattn", "concat", "gate_res"],
+    ap.add_argument("--fusion", default="xattn",
+                    choices=["xattn", "concat", "gate_res", "gmu", "film", "moe2",
+                             "late_ens"],
                     help="两路合并方式：xattn=交叉注意力 / concat=拼接 / gate_res=门控残差")
     ap.add_argument("--label", default="raw", choices=["raw", "xsec_z"],
                     help="标签口径：raw=原始未来收益 / xsec_z=截面 z-score（MASTER 做法，对齐 RankIC）")
