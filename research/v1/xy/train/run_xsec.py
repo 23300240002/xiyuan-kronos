@@ -110,7 +110,7 @@ def precompute(backbone, x, n_code: int, timestamps, lookback: int, dev: str,
 
 def run(seeds, device, lookback: int, horizon: int, stride: int, epochs: int,
         lr: float, d_hidden: int, n_heads: int, dropout: float, wd: float,
-        residual: bool, micro: str = "none"):
+        residual: bool, micro: str = "none", test_stride: int = 5):
     x = np.load(RUNS / "tensor" / "5min" / "x.npy")        # 全量入内存（370MB）
     meta = json.loads((RUNS / "tensor" / "5min" / "meta.json").read_text())
     n_code, n_time = meta["n_code"], meta["n_time"]
@@ -120,8 +120,8 @@ def run(seeds, device, lookback: int, horizon: int, stride: int, epochs: int,
 
     n_train = int(n_time * 0.7)
     train_ts = list(range(lookback - 1, n_train - horizon, stride))
-    val_ts = list(range(n_train, n_time - horizon, max(stride * 4, 20)))
-    test_ts = list(range(int(n_time * 0.85), n_time - horizon, 5))
+    val_ts = list(range(n_train, n_time - horizon, stride))   # 与训练同密度，早停才可靠
+    test_ts = list(range(int(n_time * 0.85), n_time - horizon, test_stride))
     print(f"[xsec] 时刻数：train={len(train_ts):,} val={len(val_ts):,} "
           f"test={len(test_ts):,}（每时刻 {n_code} 只票）", flush=True)
 
@@ -226,6 +226,7 @@ def run(seeds, device, lookback: int, horizon: int, stride: int, epochs: int,
         out = {
             "model": "xsec_attention", "seed": seed,
             "lookback": lookback, "horizon": horizon, "stride": stride,
+            "test_stride": test_stride,
             "d_hidden": d_hidden, "n_heads": n_heads, "residual": residual,
             "label": "xsec_z", "micro": micro,
             "best_val_ic": best, "history": hist,
@@ -271,9 +272,12 @@ def main() -> None:
     ap.add_argument("--no-residual", action="store_true")
     ap.add_argument("--micro", default="none", choices=["none", "m1", "l2", "sde", "m1sde"],
                     help="额外接入的微观张量（与 K 线池化特征拼接）")
+    ap.add_argument("--test-stride", type=int, default=5,
+                    help="测试段采样间隔；设 1 与 test_eval 口径完全一致")
     a = ap.parse_args()
     run(a.seeds, a.device, a.lookback, a.horizon, a.stride, a.epochs, a.lr,
-        a.d_hidden, a.n_heads, a.dropout, a.wd, not a.no_residual, a.micro)
+        a.d_hidden, a.n_heads, a.dropout, a.wd, not a.no_residual, a.micro,
+        a.test_stride)
 
 
 if __name__ == "__main__":

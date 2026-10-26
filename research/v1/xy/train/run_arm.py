@@ -393,7 +393,8 @@ def run(arm: int, freq: str, epochs: int, seed: int, device: str,
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--arm", type=int, default=1, choices=[1, 2, 3])
-    ap.add_argument("--freq", default="daily", choices=["daily", "5min"])
+    ap.add_argument("--freq", default="5min",
+                    choices=["daily", "5min", "1min", "15min"])
     ap.add_argument("--epochs", type=int, default=20)
     ap.add_argument("--seeds", type=int, nargs="+", default=[0])
     ap.add_argument("--device", default=None)

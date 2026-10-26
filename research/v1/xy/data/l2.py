@@ -50,8 +50,16 @@ M0, M1 = 34200, 41400
 A0, A1 = 46800, 54000
 
 
-def snapshot_features(q: pd.DataFrame) -> pd.DataFrame:
-    """从十档快照算盘口特征。q 为已排序的行情表。"""
+def snapshot_features(q: pd.DataFrame, keep_raw: bool = False) -> pd.DataFrame:
+    """从十档快照算盘口特征。q 为已排序的行情表。
+
+    keep_raw=True 时额外输出 40 个**无量纲**原始档位特征（DeepLOB 路线用）：
+        bdist1..10 = (mid − bid_px_k)/mid    买档相对距离（正、随档位递增）
+        adist1..10 = (ask_px_k − mid)/mid    卖档相对距离
+        blog1..10  = log1p(bid_sz_k)         买档挂单量对数
+        alog1..10  = log1p(ask_sz_k)         卖档挂单量对数
+    价格用相对距离而非绝对值（绝对价格无跨票可比性），量取对数压尾。
+    """
     bid_px = sorted([c for c in q.columns if BID_PX.match(c)], key=lambda c: int(BID_PX.match(c).group(1)))
     ask_px = sorted([c for c in q.columns if ASK_PX.match(c)], key=lambda c: int(ASK_PX.match(c).group(1)))
     bid_sz = sorted([c for c in q.columns if BID_SZ.match(c)], key=lambda c: int(BID_SZ.match(c).group(1)))
@@ -111,10 +119,19 @@ def snapshot_features(q: pd.DataFrame) -> pd.DataFrame:
         "ask_sz10": as_.sum(1),
     })
     out["dmid"] = out["mid"].pct_change()
+
+    if keep_raw:
+        # 40 个无量纲原始档位特征（DeepLOB 路线）
+        safe_mid = np.where(mid > 0, mid, np.nan)
+        for k in range(10):
+            out[f"bdist{k + 1}"] = (safe_mid - bp[:, k]) / safe_mid
+            out[f"adist{k + 1}"] = (ap[:, k] - safe_mid) / safe_mid
+            out[f"blog{k + 1}"] = np.log1p(np.maximum(bs[:, k], 0))
+            out[f"alog{k + 1}"] = np.log1p(np.maximum(as_[:, k], 0))
     return out
 
 
-def process_stock(stock_dir: pathlib.Path) -> pd.DataFrame | None:
+def process_stock(stock_dir: pathlib.Path, keep_raw: bool = False) -> pd.DataFrame | None:
     f = stock_dir / "行情.csv"
     if not f.exists():
         return None
@@ -122,12 +139,27 @@ def process_stock(stock_dir: pathlib.Path) -> pd.DataFrame | None:
     if len(q) < 10:
         return None
     q = q.sort_values("时间").reset_index(drop=True)
-    feat = snapshot_features(q)
+    feat = snapshot_features(q, keep_raw=keep_raw)
     feat.insert(0, "code", stock_dir.name.split(".")[0])
     return feat
 
 
-def run(archive: str, out_dir: str, limit: int | None = None) -> None:
+def _worker(args):
+    """多进程 worker：处理单只票，返回 (文件名, DataFrame 或 None)。"""
+    sd_str, date_tag, keep_raw = args
+    sd = pathlib.Path(sd_str)
+    try:
+        feat = process_stock(sd, keep_raw=keep_raw)
+    except Exception as e:  # noqa: BLE001
+        return (sd.name, None, str(e)[:80])
+    if feat is None:
+        return (sd.name, None, None)
+    feat.insert(0, "path_date", date_tag)
+    return (sd.name, feat, None)
+
+
+def run(archive: str, out_dir: str, limit: int | None = None,
+        keep_raw: bool = False, workers: int = 8) -> None:
     date_tag = pathlib.Path(archive).stem[:8]
     import py7zr
 
@@ -149,19 +181,19 @@ def run(archive: str, out_dir: str, limit: int | None = None) -> None:
     stocks = sorted([p.parent for p in out.rglob("行情.csv")])
     print(f"[l2] 待处理 {len(stocks)} 只票")
     ok = 0
-    for i, sd in enumerate(stocks, 1):
-        try:
-            feat = process_stock(sd)
-        except Exception as e:  # noqa: BLE001
-            print(f"  ! {sd.name}: {str(e)[:90]}")
-            continue
-        if feat is None:
-            continue
-        feat.insert(0, "path_date", date_tag)          # 日期入列，防止跨日覆盖
-        feat.to_parquet(out / f"{date_tag}_{sd.name}.parquet", index=False)
-        ok += 1
-        if i % 10 == 0 or i == len(stocks):
-            print(f"  {i}/{len(stocks)}  ok={ok}")
+    # 多进程并行（单线程实测约 1 小时/天，8 进程降到 8 分钟量级）
+    import multiprocessing as mp
+    jobs = [(str(sd), date_tag, keep_raw) for sd in stocks]
+    with mp.Pool(processes=min(workers, 12)) as pool:
+        for i, (name, feat, err) in enumerate(
+                pool.imap_unordered(_worker, jobs, chunksize=8), 1):
+            if err:
+                print(f"  ! {name}: {err}")
+            elif feat is not None:
+                feat.to_parquet(out / f"{date_tag}_{name}.parquet", index=False)
+                ok += 1
+            if i % 500 == 0 or i == len(stocks):
+                print(f"  {i}/{len(stocks)}  ok={ok}", flush=True)
     print(f"[l2] 完成 {ok} 只票，{time.time() - t0:.0f}s → {out}")
 
 
@@ -172,6 +204,9 @@ def main() -> None:
     ap.add_argument("--out", required=True)
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--dates", default=None, help="逗号分隔，只处理这些日期")
+    ap.add_argument("--keep-raw", action="store_true",
+                    help="额外保存 40 个无量纲原始十档特征（DeepLOB 路线）")
+    ap.add_argument("--workers", type=int, default=8, help="并行进程数")
     a = ap.parse_args()
 
     if a.dir:
@@ -186,9 +221,9 @@ def main() -> None:
         print(f"[l2] 目录模式：{len(arcs)} 个归档")
         for i, arc in enumerate(arcs, 1):
             print(f"[l2] ({i}/{len(arcs)}) {os.path.basename(arc)}", flush=True)
-            run(arc, a.out, a.limit)
+            run(arc, a.out, a.limit, keep_raw=a.keep_raw, workers=a.workers)
     else:
-        run(a.archive, a.out, a.limit)
+        run(a.archive, a.out, a.limit, keep_raw=a.keep_raw, workers=a.workers)
 
 
 if __name__ == "__main__":

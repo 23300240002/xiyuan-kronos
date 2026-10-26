@@ -128,11 +128,13 @@ def spearman(a, b):
 
 
 def evaluate(arm: int, freq: str, seed: int, device, B: int, tag: str,
-             batch: int = 512) -> dict:
+             batch: int = 512, match: str | None = None) -> dict:
     import torch
 
     # 目录名带全部超参后缀（loss_micro_size），用 glob 匹配；旧命名也兼容
     cands = sorted((RUNS / "arm").glob(f"arm{arm}_{freq}_s{seed}_*"))
+    if match:                                 # 明确指定子串，避免同名多版本选错
+        cands = [c for c in cands if match in c.name]
     res_path = next((c / "result.json" for c in cands
                      if (c / "result.json").exists()), None)
     if res_path is None:                      # 旧命名：无超参后缀
@@ -198,13 +200,16 @@ def main() -> None:
     ap.add_argument("--device", default=None)
     ap.add_argument("--B", type=int, default=1000)
     ap.add_argument("--tag", default="v1")
+    ap.add_argument("--match", default=None,
+                    help="目录名子串过滤，如 xsec_z / rank / sde；避免多版本选错目录")
     ap.add_argument("--batch", type=int, default=512)
     a = ap.parse_args()
     rows = []
     for arm in a.arm:
         for s in a.seeds:
             try:
-                rows.append(evaluate(arm, a.freq, s, a.device, a.B, a.tag, a.batch))
+                rows.append(evaluate(arm, a.freq, s, a.device, a.B, a.tag, a.batch,
+                                  match=a.match))
             except Exception as e:                      # noqa: BLE001
                 print(f"[arm{arm} s{s}] 失败: {str(e)[:150]}")
     if rows:
