@@ -423,3 +423,90 @@ $SSH "cd $W && tar xzf xy.tgz -C $W/code --overwrite"
 - 服务器长任务用 `setsid nohup ... & disown`
 - `tar czf - 相对路径` 解压会深一层，需 `mv` 归位
 - 目录名现在带 `{loss}_{micro}_{size}` 后缀，防覆盖
+
+---
+
+# 交接（2026-10-26 13:40 · 12 小时窗口收尾）
+
+## 一句话现状
+
+**找到了第一个产生真实增量的融合方法：MoE**（RankIC +0.0668 vs 仅 K 线 +0.0598，
+IC +0.0126 vs +0.0033）。30 天连续 L2 数据解析中（7/30 天）。
+
+## 1. 本轮最大成果：MoE 融合突破
+
+| 方法 | test IC | test RankIC | 参数量 |
+|---|---|---|---|
+| arm-2 单模态（上界参照） | **+0.0268** | +0.0323 | 1.88M |
+| arm-1 单模态 | +0.0033 | +0.0598 | 1.88M |
+| xattn（原版） | −0.0161 | +0.0173 | 1.88M |
+| gate_res | −0.0109 | +0.0328 | 0.56M |
+| concat | +0.0022 | +0.0452 | 0.53M |
+| film | −0.0039 | +0.0515 | 0.63M |
+| gmu | +0.0020 | +0.0541 | 0.83M |
+| **moe2** | **+0.0126** | **+0.0668 ± 0.0035** | 0.83M |
+| late_ens（buggy） | −0.0171 | +0.0108 | 0.66M |
+
+**MoE 为什么能行**（文献机制被验证）：路由 `w=softmax(R[h;m])` 让两路走**独立专家网络**，
+梯度在专家层面天然分流，弱模态不会被强模态淹没。而 xattn/GMU 共享一个融合算子，
+弱模态只能被压制或忽略。
+
+**这是项目第一次"融合 > 最好单模态"**，P2 命题从阴性转为**条件性阳性**。
+
+## 2. 本轮修的 11 个 bug（前 7 个见上一节交接）
+
+| # | Bug | 后果 |
+|---|---|---|
+| 8 | `run_arm --freq` 只接受 daily/5min | 多频率秒失败 |
+| 9 | `test_eval --match` 没传到 evaluate | **评估会用错权重算出假结果** |
+| 10 | `queue_fix.sh` 的 pgrep 自匹配死循环 | 补跑队列永久卡住 |
+| 11 | l2 解析单线程 1 小时/天 | 30 天要 30 小时 |
+| 12 | GMU/FiLM/MoE 未广播微观 token | size mismatch |
+| 13 | `late_ens` 单 token 的 std 恒为 0 | 微观头输入 1/3 退化，IC −0.0338 |
+
+## 3. 数据状态
+
+**30 天连续 L2 块（20241008–20241118）解析中：7/30 天完成，约 90GB**
+
+- 位置 `$W/l2/parsed_30d/`（每票每日一个 parquet）
+- **含 40 个无量纲原始十档**（bdist/adist 档位距离 + blog/alog 挂单量对数）+ 13 个派生特征
+- 解析器已加多进程（`--workers 10`），约 7 分钟/天
+- **注意**：解析曾因 BrokenPipeError 中断过一次，已从断点续跑（脚本 `parse30.sh` 里写死了剩余 25 天的日期）
+
+## 4. 未完成的任务（按优先级）
+
+| # | 任务 | 说明 |
+|---|---|---|
+| 1 | **30 天解析跑完** | 剩 23 天，约 2.7 小时。完成后建张量 → L2 截面实验（lookback 可到 240） |
+| 2 | **xsec stride=40 公平验证** | 决定截面模型 headline 结论的严格性，约 20 分钟 |
+| 3 | xsec_z / rank / sde 的测试段评估 | 目前只有 val IC，口径不统一 |
+| 4 | 多频率 15min/1min | `--freq` 已修，脚本 `/tmp/multifreq.sh` 可直接跑 |
+| 5 | MoE 在 M1 通道上复现 | 验证"MoE 有效"不是 L2 特例 |
+| 6 | 真·晚期集成 | 分别训练 arm-1/arm-2 → 推理时平均预测（需保存预测值） |
+
+## 5. 关键命令
+
+```bash
+W=/share/home/tm884089579940000/a891264510/work1024
+SSH="ssh -S /tmp/gpu.sock -p 9002 root@47.107.102.231"
+
+# 解析进度
+$SSH "ls $W/l2/parsed_30d/ | cut -c1-8 | sort -u | wc -l; tail -1 $W/runs/parse30.log"
+
+# 融合横评结果
+$SSH "cd $W/code/v1 && $W/envs/v1/bin/python -c \"
+import json,glob,numpy as np
+for fus in ['xattn','concat','gate_res','gmu','film','moe2','late_ens']:
+    v=[json.load(open(f))['test'] for f in glob.glob('runs/l2arm/arm3_L24_H12_%s_s*/result.json'%fus)]
+    if v: print('%-9s IC %+.5f RankIC %+.5f (n=%d)'%(fus,np.mean([x['ic'] for x in v]),np.mean([x['rank_ic'] for x in v]),len(v)))\""
+
+# 续跑解析（如再次中断）
+$SSH "cd $W && DONE=\$(ls l2/parsed_30d/ | cut -c1-8 | sort -u | paste -sd, -) && ..."  # 见 parse30.sh
+```
+
+## 6. 踩坑提醒（新增）
+
+- **`kill -STOP` 会让监控误判**：监控若自动重启会造出重复队列，务必只读告警
+- **`pgrep -f 'pattern'` 会匹配自己**：`while pgrep -f 'xxx'` 死循环，改用 PID 或加 `grep -v $$`
+- **单 token 的 `std` 恒为 0**：任何"末点+均值+标准差"池化都要检查序列长度是否为 1
+- **多进程 Pool 崩溃会抛 BrokenPipeError**：父进程死时子进程还在写，续跑要跳过已完成部分

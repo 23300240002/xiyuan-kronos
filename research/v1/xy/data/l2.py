@@ -159,7 +159,8 @@ def _worker(args):
 
 
 def run(archive: str, out_dir: str, limit: int | None = None,
-        keep_raw: bool = False, workers: int = 8) -> None:
+        keep_raw: bool = False, workers: int = 8,
+        pool: set[str] | None = None) -> None:
     date_tag = pathlib.Path(archive).stem[:8]
     import py7zr
 
@@ -171,6 +172,13 @@ def run(archive: str, out_dir: str, limit: int | None = None,
     with py7zr.SevenZipFile(archive, mode="r") as z:
         names = z.getnames()
         targets = [n for n in names if n.endswith("行情.csv")]   # 深度无关：有的归档没有顶层日期目录
+        if pool:
+            # 只保留票池内的票：归档里可能有几万个非股票标的（基金/债券），
+            # 全解压会慢 8 倍且占满磁盘
+            before = len(targets)
+            targets = [n for n in targets
+                       if n.rsplit("/", 2)[-2].split(".")[0] in pool]
+            print(f"[l2] 票池过滤：{before:,} → {len(targets):,} 个行情表")
         print(f"[l2] 归档内 {len(names)} 个条目，行情表 {len(targets)} 个")
         if limit:
             keep = {n.rsplit("/", 1)[0] for n in targets[:limit]}
@@ -184,9 +192,9 @@ def run(archive: str, out_dir: str, limit: int | None = None,
     # 多进程并行（单线程实测约 1 小时/天，8 进程降到 8 分钟量级）
     import multiprocessing as mp
     jobs = [(str(sd), date_tag, keep_raw) for sd in stocks]
-    with mp.Pool(processes=min(workers, 12)) as pool:
+    with mp.Pool(processes=min(workers, 12)) as mp_pool:
         for i, (name, feat, err) in enumerate(
-                pool.imap_unordered(_worker, jobs, chunksize=8), 1):
+                mp_pool.imap_unordered(_worker, jobs, chunksize=8), 1):
             if err:
                 print(f"  ! {name}: {err}")
             elif feat is not None:
@@ -207,7 +215,16 @@ def main() -> None:
     ap.add_argument("--keep-raw", action="store_true",
                     help="额外保存 40 个无量纲原始十档特征（DeepLOB 路线）")
     ap.add_argument("--workers", type=int, default=8, help="并行进程数")
+    ap.add_argument("--pool-from", default=None,
+                    help="从该 tensor 目录的 meta.json 读票池（如 runs/tensor/5min）")
     a = ap.parse_args()
+
+    pool = None
+    if a.pool_from:
+        import json as _json
+        _m = _json.loads((pathlib.Path(a.pool_from) / "meta.json").read_text())
+        pool = set(_m["codes"])
+        print(f"[l2] 票池 {len(pool)} 只（来自 {a.pool_from}）")
 
     if a.dir:
         import glob
@@ -221,9 +238,11 @@ def main() -> None:
         print(f"[l2] 目录模式：{len(arcs)} 个归档")
         for i, arc in enumerate(arcs, 1):
             print(f"[l2] ({i}/{len(arcs)}) {os.path.basename(arc)}", flush=True)
-            run(arc, a.out, a.limit, keep_raw=a.keep_raw, workers=a.workers)
+            run(arc, a.out, a.limit, keep_raw=a.keep_raw, workers=a.workers,
+                pool=pool)
     else:
-        run(a.archive, a.out, a.limit, keep_raw=a.keep_raw, workers=a.workers)
+        run(a.archive, a.out, a.limit, keep_raw=a.keep_raw, workers=a.workers,
+            pool=pool)
 
 
 if __name__ == "__main__":
